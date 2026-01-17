@@ -4,15 +4,20 @@ import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, X, FileImage } from 'lucide-react';
+import { Upload, X, FileImage, Loader2, CheckCircle } from 'lucide-react';
 import { useDesignStore } from '@/lib/store/design-store';
+import { useSegmentationStore } from '@/lib/store/segmentation-store';
 import { RoomData } from '@/lib/types/room';
 
 export function FloorplanUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [segmenting, setSegmenting] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [segmentationComplete, setSegmentationComplete] = useState(false);
   const setRoomData = useDesignStore((state) => state.setRoomData);
+  const setSegmentationResult = useSegmentationStore((state) => state.setSegmentationResult);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const selectedFile = acceptedFiles[0];
@@ -40,39 +45,65 @@ export function FloorplanUpload() {
     if (!file) return;
 
     setUploading(true);
+    setAnalysisComplete(false);
+    setSegmentationComplete(false);
+
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/analyze-floorplan', {
+      // Step 1: Analyze room dimensions and layout
+      const analysisResponse = await fetch('/api/analyze-floorplan', {
         method: 'POST',
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Upload failed');
+      if (!analysisResponse.ok) throw new Error('Analysis failed');
 
-      const data = await response.json();
+      const analysisData = await analysisResponse.json();
       
       // Create room data from analysis
       const roomData: RoomData = {
-        dimensions: data.dimensions || {
+        dimensions: analysisData.dimensions || {
           length: 12,
           width: 10,
           height: 9,
           unit: 'ft',
         },
-        shape: data.shape || { type: 'rectangle' },
+        shape: analysisData.shape || { type: 'rectangle' },
         floorplanImageUrl: preview || undefined,
-        doors: data.doors,
-        windows: data.windows,
+        doors: analysisData.doors,
+        windows: analysisData.windows,
       };
 
       setRoomData(roomData);
+      setAnalysisComplete(true);
+      setUploading(false);
+
+      // Step 2: Segment objects in the image
+      setSegmenting(true);
+      
+      const segmentFormData = new FormData();
+      segmentFormData.append('file', file);
+
+      const segmentResponse = await fetch('/api/segment-room', {
+        method: 'POST',
+        body: segmentFormData,
+      });
+
+      if (segmentResponse.ok) {
+        const segmentData = await segmentResponse.json();
+        setSegmentationResult(segmentData);
+        setSegmentationComplete(true);
+      } else {
+        console.warn('Segmentation failed, continuing without it');
+      }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload floorplan. Please try again.');
+      alert('Failed to process image. Please try again.');
     } finally {
       setUploading(false);
+      setSegmenting(false);
     }
   };
 
@@ -135,12 +166,54 @@ export function FloorplanUpload() {
                 ({(file.size / 1024 / 1024).toFixed(2)} MB)
               </span>
             </div>
+            {/* Progress Steps */}
+            {(uploading || segmenting || analysisComplete) && (
+              <div className="space-y-2 p-4 bg-secondary rounded-lg">
+                <div className="flex items-center gap-2">
+                  {analysisComplete ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
+                  )}
+                  <span className={analysisComplete ? 'text-green-600' : ''}>
+                    Analyzing room dimensions...
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {segmentationComplete ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : segmenting ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
+                  )}
+                  <span className={segmentationComplete ? 'text-green-600' : ''}>
+                    Detecting furniture & objects...
+                  </span>
+                </div>
+              </div>
+            )}
+
             <Button
               onClick={handleUpload}
-              disabled={uploading}
+              disabled={uploading || segmenting}
               className="w-full"
             >
-              {uploading ? 'Analyzing...' : 'Analyze Floorplan'}
+              {uploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Analyzing Room...
+                </>
+              ) : segmenting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Detecting Objects...
+                </>
+              ) : (
+                'Analyze & Detect Objects'
+              )}
             </Button>
           </div>
         )}

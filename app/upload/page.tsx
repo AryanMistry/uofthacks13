@@ -5,22 +5,31 @@ import { useRouter } from 'next/navigation';
 import { FloorplanUpload } from '@/components/upload/FloorplanUpload';
 import { PhotoUpload } from '@/components/upload/PhotoUpload';
 import { ManualInput } from '@/components/upload/ManualInput';
+import { SegmentationPreview } from '@/components/upload/SegmentationPreview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDesignStore } from '@/lib/store/design-store';
+import { useSegmentationStore } from '@/lib/store/segmentation-store';
 import Link from 'next/link';
 
 type UploadMethod = 'floorplan' | 'photos' | 'manual';
 
 export default function UploadPage() {
   const [method, setMethod] = useState<UploadMethod>('floorplan');
+  const [showSegmentation, setShowSegmentation] = useState(false);
   const router = useRouter();
   const roomData = useDesignStore((state) => state.roomData);
+  const segmentationResult = useSegmentationStore((state) => state.segmentationResult);
+  const generatedModels = useSegmentationStore((state) => state.generatedModels);
 
   const handleContinue = () => {
     if (roomData) {
       router.push('/quiz');
     }
+  };
+
+  const handleSegmentationComplete = () => {
+    setShowSegmentation(false);
   };
 
   return (
@@ -73,6 +82,30 @@ export default function UploadPage() {
           {method === 'photos' && <PhotoUpload />}
           {method === 'manual' && <ManualInput />}
         </div>
+
+        {/* Segmentation Preview */}
+        {segmentationResult && segmentationResult.objects.length > 0 && (
+          <div className="mb-8">
+            <SegmentationPreview onComplete={handleSegmentationComplete} />
+          </div>
+        )}
+
+        {/* Generated Models Info */}
+        {generatedModels.length > 0 && (
+          <div className="mb-8 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 text-green-700">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span className="font-medium">
+                {generatedModels.length} 3D models generated from your room!
+              </span>
+            </div>
+            <p className="text-sm text-green-600 mt-1">
+              These will be used in your redesigned room visualization.
+            </p>
+          </div>
+        )}
 
         {/* Continue Button */}
         {roomData && (

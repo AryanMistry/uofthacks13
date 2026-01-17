@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDesignStore } from '@/lib/store/design-store';
+import { useSegmentationStore } from '@/lib/store/segmentation-store';
 import { RoomData } from '@/lib/types/room';
 import { IdentityProfile } from '@/lib/types/identity';
 import { BeforeAfter } from '@/components/results/BeforeAfter';
@@ -12,12 +13,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Product, ShoppingList as ShoppingListType } from '@/lib/types/product';
 import { DesignResult } from '@/lib/types/design';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Box } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DesignPage() {
   const router = useRouter();
   const { roomData, identityProfile, designResult, setDesignResult, setRoomData, setIdentityProfile } = useDesignStore();
+  const generatedModels = useSegmentationStore((state) => state.generatedModels);
+  const segmentationResult = useSegmentationStore((state) => state.segmentationResult);
   const [loading, setLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [shoppingList, setShoppingList] = useState<ShoppingListType | null>(null);
@@ -245,6 +248,42 @@ export default function DesignPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Segmented Objects */}
+            {generatedModels && generatedModels.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Box className="h-5 w-5" />
+                    Detected Objects
+                  </CardTitle>
+                  <CardDescription>
+                    Objects from your room converted to 3D
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {generatedModels.map((model: any) => (
+                      <div
+                        key={model.id}
+                        className="flex items-center justify-between p-2 bg-secondary rounded-lg"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: model.geometry?.color || '#888' }}
+                          />
+                          <span className="text-sm capitalize">{model.label}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground capitalize">
+                          {model.category}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>

@@ -13,8 +13,11 @@ interface BeforeAfterProps {
 }
 
 export function BeforeAfter({ roomData, furniture, onFurnitureClick }: BeforeAfterProps) {
-  const [sliderValue, setSliderValue] = useState([50]);
+  // Start at 75 so we show the "After" (furnished) view by default
+  const [sliderValue, setSliderValue] = useState([75]);
   const showBefore = sliderValue[0] < 50;
+  
+  console.log('BeforeAfter - furniture count:', furniture?.length, 'showBefore:', showBefore);
 
   return (
     <div className="relative w-full h-[600px] rounded-lg overflow-hidden border-2 border-gray-300">
