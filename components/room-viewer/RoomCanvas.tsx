@@ -8,6 +8,7 @@ import { Product } from '@/lib/types/product';
 import { RoomData } from '@/lib/types/room';
 import { useSegmentationStore } from '@/lib/store/segmentation-store';
 import { createDetailedProceduralFurniture } from '@/lib/3d/procedural-furniture';
+import { getOnlineModelUrl, getOnlineModelUrls } from '@/lib/3d/asset-library';
 
 interface RoomCanvasProps {
   roomData: RoomData;
@@ -351,6 +352,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
   const [selectedFurniture, setSelectedFurniture] = useState<THREE.Object3D | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredFurniture, setHoveredFurniture] = useState<THREE.Object3D | null>(null);
+  const [assetDebugEnabled, setAssetDebugEnabled] = useState(false);
 
   const selectionOutlineRef = useRef<THREE.LineSegments | null>(null);
   const dragOffsetRef = useRef(new THREE.Vector3());
@@ -373,6 +375,11 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const debug = params.get('debugAssets') === 'true';
+      setAssetDebugEnabled(debug || process.env.NODE_ENV !== 'production');
+    }
   }, []);
 
   // Initialize Three.js scene
@@ -517,6 +524,218 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
     );
     backBaseboard.position.set(0, baseboardHeight / 2, -roomWidth / 2 + 0.01);
     scene.add(backBaseboard);
+
+    // Windows and Doors
+    const addWindows = () => {
+      const windows = segmentationResult?.windows || [];
+      if (windows.length === 0) return;
+
+      for (const win of windows) {
+        const winWidth = (win.width || 4) * unit;
+        const winHeight = (win.height || 4) * unit;
+        const winX = (win.x || 0) * unit;
+        const winZ = (win.z || 0) * unit;
+
+        // Window frame
+        const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.3 });
+        const frameThickness = 0.05;
+
+        // Window glass
+        const glassMaterial = new THREE.MeshStandardMaterial({
+          color: 0x87CEEB,
+          transparent: true,
+          opacity: 0.3,
+          metalness: 0.1,
+          roughness: 0.1,
+        });
+
+        const wallInset = 0.06;
+        let frameX = 0, frameY = roomHeight * 0.55, frameZ = 0;
+        let frameRotation = 0;
+
+        switch (win.wall) {
+          case 'left':
+            frameX = -roomLength / 2 + wallInset;
+            frameZ = winZ;
+            frameRotation = Math.PI / 2;
+            break;
+          case 'right':
+            frameX = roomLength / 2 - wallInset;
+            frameZ = winZ;
+            frameRotation = -Math.PI / 2;
+            break;
+          case 'back':
+            frameX = winX;
+            frameZ = -roomWidth / 2 + wallInset;
+            frameRotation = 0;
+            break;
+          case 'front':
+            frameX = winX;
+            frameZ = roomWidth / 2 - wallInset;
+            frameRotation = Math.PI;
+            break;
+        }
+
+        // Create window group
+        const windowGroup = new THREE.Group();
+
+        // Glass pane
+        const glass = new THREE.Mesh(
+          new THREE.PlaneGeometry(winWidth, winHeight),
+          glassMaterial
+        );
+        windowGroup.add(glass);
+
+        // Window frame (4 sides)
+        const topFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(winWidth + frameThickness * 2, frameThickness, 0.02),
+          frameMaterial
+        );
+        topFrame.position.y = winHeight / 2;
+        windowGroup.add(topFrame);
+
+        const bottomFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(winWidth + frameThickness * 2, frameThickness, 0.02),
+          frameMaterial
+        );
+        bottomFrame.position.y = -winHeight / 2;
+        windowGroup.add(bottomFrame);
+
+        const leftFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(frameThickness, winHeight, 0.02),
+          frameMaterial
+        );
+        leftFrame.position.x = -winWidth / 2;
+        windowGroup.add(leftFrame);
+
+        const rightFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(frameThickness, winHeight, 0.02),
+          frameMaterial
+        );
+        rightFrame.position.x = winWidth / 2;
+        windowGroup.add(rightFrame);
+
+        // Center divider
+        const centerVertical = new THREE.Mesh(
+          new THREE.BoxGeometry(frameThickness / 2, winHeight, 0.02),
+          frameMaterial
+        );
+        windowGroup.add(centerVertical);
+
+        const centerHorizontal = new THREE.Mesh(
+          new THREE.BoxGeometry(winWidth, frameThickness / 2, 0.02),
+          frameMaterial
+        );
+        windowGroup.add(centerHorizontal);
+
+        windowGroup.position.set(frameX, frameY, frameZ);
+        windowGroup.rotation.y = frameRotation;
+        windowGroup.name = 'window';
+        scene.add(windowGroup);
+      }
+    };
+
+    const addDoors = () => {
+      const doors = segmentationResult?.doors || [];
+      if (doors.length === 0) return;
+
+      for (const door of doors) {
+        const doorWidth = (door.width || 3) * unit;
+        const doorHeight = roomHeight * 0.85;
+        const doorX = (door.x || 0) * unit;
+        const doorZ = (door.z || 0) * unit;
+
+        const doorMaterial = new THREE.MeshStandardMaterial({
+          color: 0x8B4513,
+          roughness: 0.6
+        });
+        const frameMaterial = new THREE.MeshStandardMaterial({
+          color: 0xF5F5F5,
+          roughness: 0.3
+        });
+
+        const wallInset = 0.08;
+        let frameX = 0, frameY = doorHeight / 2, frameZ = 0;
+        let frameRotation = 0;
+
+        switch (door.wall) {
+          case 'front':
+            frameX = doorX;
+            frameZ = roomWidth / 2 - wallInset;
+            frameRotation = Math.PI;
+            break;
+          case 'back':
+            frameX = doorX;
+            frameZ = -roomWidth / 2 + wallInset;
+            frameRotation = 0;
+            break;
+          case 'left':
+            frameX = -roomLength / 2 + wallInset;
+            frameZ = doorZ;
+            frameRotation = Math.PI / 2;
+            break;
+          case 'right':
+            frameX = roomLength / 2 - wallInset;
+            frameZ = doorZ;
+            frameRotation = -Math.PI / 2;
+            break;
+        }
+
+        const doorGroup = new THREE.Group();
+
+        // Door panel
+        const doorPanel = new THREE.Mesh(
+          new THREE.BoxGeometry(doorWidth * 0.9, doorHeight * 0.95, 0.04),
+          doorMaterial
+        );
+        doorPanel.castShadow = true;
+        doorGroup.add(doorPanel);
+
+        // Door handle
+        const handleMaterial = new THREE.MeshStandardMaterial({
+          color: 0xC0C0C0,
+          metalness: 0.8,
+          roughness: 0.2
+        });
+        const handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, 0.03, 0.08),
+          handleMaterial
+        );
+        handle.position.set(doorWidth * 0.35, 0, 0.04);
+        doorGroup.add(handle);
+
+        // Door frame
+        const frameThickness = 0.05;
+        const topFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(doorWidth + frameThickness * 2, frameThickness, 0.06),
+          frameMaterial
+        );
+        topFrame.position.y = doorHeight / 2;
+        doorGroup.add(topFrame);
+
+        const leftFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(frameThickness, doorHeight + frameThickness, 0.06),
+          frameMaterial
+        );
+        leftFrame.position.x = -doorWidth / 2;
+        doorGroup.add(leftFrame);
+
+        const rightFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(frameThickness, doorHeight + frameThickness, 0.06),
+          frameMaterial
+        );
+        rightFrame.position.x = doorWidth / 2;
+        doorGroup.add(rightFrame);
+
+        doorGroup.position.set(frameX, frameY, frameZ);
+        doorGroup.rotation.y = frameRotation;
+        doorGroup.name = 'door';
+        scene.add(doorGroup);
+      }
+    };
+
+    addWindows();
+    addDoors();
 
     // Furniture group
     const furnitureGroup = new THREE.Group();
@@ -721,68 +940,83 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
 
     const onMouseUp = () => {
       if (isDragging && selectedFurniture) {
-        // Check for collisions with other furniture and snap to non-overlapping position
-        const otherFurniture = furnitureGroup.children.filter(f => f !== selectedFurniture);
+        // Helper to check if an object is a floor covering (rug/carpet)
+        const isFloorCovering = (obj: THREE.Object3D) => {
+          const label = (obj.userData?.label || '').toLowerCase();
+          return label.includes('rug') || label.includes('carpet') || label.includes('mat');
+        };
 
-        const selectedBox = new THREE.Box3().setFromObject(selectedFurniture);
-        const selectedSize = selectedBox.getSize(new THREE.Vector3());
+        // Floor coverings don't need collision detection
+        const selectedIsFloorCovering = isFloorCovering(selectedFurniture);
 
-        let hasCollision = false;
+        if (!selectedIsFloorCovering) {
+          // Check for collisions with other furniture (excluding floor coverings)
+          const otherFurniture = furnitureGroup.children.filter(f =>
+            f !== selectedFurniture && !isFloorCovering(f)
+          );
 
-        for (const other of otherFurniture) {
-          const otherBox = new THREE.Box3().setFromObject(other);
-          if (selectedBox.intersectsBox(otherBox)) {
-            hasCollision = true;
-            break;
-          }
-        }
+          const selectedBox = new THREE.Box3().setFromObject(selectedFurniture);
+          const selectedSize = selectedBox.getSize(new THREE.Vector3());
 
-        if (hasCollision) {
-          // Try to find a non-overlapping position nearby
-          const originalPos = selectedFurniture.position.clone();
-          const offsets = [
-            [1, 0], [-1, 0], [0, 1], [0, -1],
-            [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5],
-            [2, 0], [-2, 0], [0, 2], [0, -2],
-            [1, 1], [-1, 1], [1, -1], [-1, -1],
-          ];
+          let hasCollision = false;
 
-          let foundSpot = false;
-          for (const [dx, dz] of offsets) {
-            selectedFurniture.position.x = originalPos.x + dx;
-            selectedFurniture.position.z = originalPos.z + dz;
-
-            // Clamp to room bounds
-            const maxX = (roomLength / 2) - (selectedSize.x / 2) - 0.1;
-            const maxZ = (roomWidth / 2) - (selectedSize.z / 2) - 0.1;
-            selectedFurniture.position.x = Math.max(-maxX, Math.min(maxX, selectedFurniture.position.x));
-            selectedFurniture.position.z = Math.max(-maxZ, Math.min(maxZ, selectedFurniture.position.z));
-
-            const testBox = new THREE.Box3().setFromObject(selectedFurniture);
-            let stillCollides = false;
-
-            for (const other of otherFurniture) {
-              const otherBox = new THREE.Box3().setFromObject(other);
-              if (testBox.intersectsBox(otherBox)) {
-                stillCollides = true;
-                break;
-              }
-            }
-
-            if (!stillCollides) {
-              foundSpot = true;
+          for (const other of otherFurniture) {
+            const otherBox = new THREE.Box3().setFromObject(other);
+            if (selectedBox.intersectsBox(otherBox)) {
+              hasCollision = true;
               break;
             }
           }
 
-          if (!foundSpot) {
-            // Couldn't find spot, revert to original
-            selectedFurniture.position.copy(originalPos);
-          }
+          if (hasCollision) {
+            // Try to find a non-overlapping position nearby
+            const originalPos = selectedFurniture.position.clone();
+            const offsets = [
+              [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8],
+              [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2],
+              [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5],
+              [2, 0], [-2, 0], [0, 2], [0, -2],
+              [1, 1], [-1, 1], [1, -1], [-1, -1],
+              [2, 2], [-2, 2], [2, -2], [-2, -2],
+            ];
 
-          // Update selection outline
-          if (selectionOutlineRef.current) {
-            selectionOutlineRef.current.position.copy(selectedFurniture.position);
+            let foundSpot = false;
+            for (const [dx, dz] of offsets) {
+              selectedFurniture.position.x = originalPos.x + dx;
+              selectedFurniture.position.z = originalPos.z + dz;
+
+              // Clamp to room bounds
+              const maxX = (roomLength / 2) - (selectedSize.x / 2) - 0.1;
+              const maxZ = (roomWidth / 2) - (selectedSize.z / 2) - 0.1;
+              selectedFurniture.position.x = Math.max(-maxX, Math.min(maxX, selectedFurniture.position.x));
+              selectedFurniture.position.z = Math.max(-maxZ, Math.min(maxZ, selectedFurniture.position.z));
+
+              const testBox = new THREE.Box3().setFromObject(selectedFurniture);
+              let stillCollides = false;
+
+              for (const other of otherFurniture) {
+                const otherBox = new THREE.Box3().setFromObject(other);
+                if (testBox.intersectsBox(otherBox)) {
+                  stillCollides = true;
+                  break;
+                }
+              }
+
+              if (!stillCollides) {
+                foundSpot = true;
+                break;
+              }
+            }
+
+            if (!foundSpot) {
+              // Couldn't find spot, revert to original
+              selectedFurniture.position.copy(originalPos);
+            }
+
+            // Update selection outline
+            if (selectionOutlineRef.current) {
+              selectionOutlineRef.current.position.copy(selectedFurniture.position);
+            }
           }
         }
 
@@ -888,6 +1122,9 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
     if (showBefore) return;
 
     setLoadingModels(true);
+    if (assetDebugEnabled) {
+      console.info('[AssetDebug] Starting asset load batch');
+    }
 
     // Get objects to render (includes rotation)
     let objectsToRender: {
@@ -908,7 +1145,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
         const dims = model.dimensions || model.estimatedDimensions || { length: 2, width: 2, height: 2 };
         const position = model.position3D ? {
           x: model.position3D.x * unit,
-          y: 0,
+          y: (model.position3D.y || 0) * unit,
           z: model.position3D.z * unit,
         } : { x: 0, y: 0, z: 0 };
         const rotation = model.position3D?.rotation || 0;
@@ -920,7 +1157,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           dimensions: dims,
           position,
           rotation,
-          modelUrl: model.modelUrl,
+          modelUrl: model.modelUrl || getOnlineModelUrl(model.label) || null,
           color: model.detectedColor,
         });
       });
@@ -933,7 +1170,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
         const dims = obj.estimatedDimensions || { length: 2, width: 2, height: 2 };
         const position = obj.position3D ? {
           x: obj.position3D.x * unit,
-          y: 0,
+          y: (obj.position3D.y || 0) * unit,
           z: obj.position3D.z * unit,
         } : { x: 0, y: 0, z: 0 };
         const rotation = obj.position3D?.rotation || 0;
@@ -945,7 +1182,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           dimensions: dims,
           position,
           rotation,
-          modelUrl: obj.modelUrl,
+          modelUrl: obj.modelUrl || getOnlineModelUrl(obj.label) || null,
           color: obj.detectedColor,
         });
       });
@@ -967,48 +1204,75 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
             z: (pos.z || 0) * unit,
           },
           rotation: pos.rotation || 0,
-          modelUrl: item.modelUrl,
+          modelUrl: item.modelUrl || getOnlineModelUrl(item.name) || null,
         });
       });
     }
 
     console.log('Rendering', objectsToRender.length, 'objects');
 
+    const loadFromUrls = async (urls: string[]) => {
+      for (const url of urls) {
+        try {
+          const gltf = await new Promise<any>((resolve, reject) => {
+            gltfLoader.load(url, resolve, undefined, reject);
+          });
+          return { scene: gltf.scene as THREE.Group, url };
+        } catch (error) {
+          console.warn('Failed to load model URL:', url, error);
+          if (assetDebugEnabled) {
+            console.warn(`[AssetDebug] ✗ ${url} (failed to load)`);
+          }
+        }
+      }
+      return null;
+    };
+
     // Load each object
     for (const obj of objectsToRender) {
       let model: THREE.Group | null = null;
 
-      if (obj.modelUrl) {
-        try {
-          const gltf = await new Promise<any>((resolve, reject) => {
-            gltfLoader.load(obj.modelUrl!, resolve, undefined, reject);
-          });
-          model = gltf.scene as THREE.Group;
+      // Prefer online assets only
+      const onlineUrls = getOnlineModelUrls(obj.label);
+      const fallbackUrl = obj.modelUrl && !obj.modelUrl.startsWith('/models')
+        ? obj.modelUrl
+        : null;
+      const urlsToTry = [...onlineUrls, ...(fallbackUrl ? [fallbackUrl] : [])];
 
-          const box = new THREE.Box3().setFromObject(model);
-          const modelSize = box.getSize(new THREE.Vector3());
-          const targetSize = new THREE.Vector3(
-            obj.dimensions.length * unit,
-            obj.dimensions.height * unit,
-            obj.dimensions.width * unit
-          );
+      if (urlsToTry.length > 0) {
+        const loaded = await loadFromUrls(urlsToTry);
+        model = loaded?.scene || null;
+        if (model && loaded?.url) {
+          model.userData = { ...(model.userData || {}), sourceUrl: loaded.url };
+        }
+      }
 
-          const scale = Math.min(
-            targetSize.x / modelSize.x,
-            targetSize.y / modelSize.y,
-            targetSize.z / modelSize.z
-          );
-          model.scale.setScalar(scale);
+      if (model) {
+        const box = new THREE.Box3().setFromObject(model);
+        const modelSize = box.getSize(new THREE.Vector3());
+        const targetSize = new THREE.Vector3(
+          obj.dimensions.length * unit,
+          obj.dimensions.height * unit,
+          obj.dimensions.width * unit
+        );
 
-          model.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-        } catch (error) {
-          console.log(`GLB not found for ${obj.label}, using procedural model`);
-          model = null;
+        const scale = Math.min(
+          targetSize.x / modelSize.x,
+          targetSize.y / modelSize.y,
+          targetSize.z / modelSize.z
+        );
+        model.scale.setScalar(scale);
+
+        model.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+      } else {
+        console.log(`Online model not found for ${obj.label}, using procedural model`);
+        if (assetDebugEnabled) {
+          console.warn(`[AssetDebug] ⚠ ${obj.label} → procedural fallback`);
         }
       }
 
@@ -1032,8 +1296,8 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
 
       if (obj.position) {
         posX = Math.max(-maxX, Math.min(maxX, obj.position.x));
-        // Y position is in feet from the API, convert to meters
-        posY = (obj.position.y || 0) * unit;
+        // Y position already in meters
+        posY = obj.position.y || 0;
         posZ = Math.max(-maxZ, Math.min(maxZ, obj.position.z));
       }
 
@@ -1048,6 +1312,10 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
         originalY: posY // Store original Y for snapping
       };
       furnitureGroup.add(model);
+      if (assetDebugEnabled) {
+        const source = model.userData?.sourceUrl || urlsToTry[0] || 'procedural';
+        console.info(`[AssetDebug] ✓ ${obj.label} → ${source}`);
+      }
     }
 
     setLoadingModels(false);
@@ -1082,6 +1350,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           </div>
         </div>
       )}
+
 
       {/* Edit mode indicator & controls */}
       {editMode && !showBefore && (

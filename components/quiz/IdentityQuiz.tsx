@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { useDesignStore } from '@/lib/store/design-store';
-import { IdentityProfile, IdentityTrait } from '@/lib/types/identity';
+import { IdentityProfile, IdentityTrait, LifestyleActivity } from '@/lib/types/identity';
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 
 const questions = [
@@ -45,6 +45,23 @@ const questions = [
         label: '🛋️ No, I prefer intimate spaces',
         description: 'Single high-quality seating, personal comfort focus'
       },
+    ],
+  },
+  // Lifestyle Activities
+  {
+    id: 'activities',
+    category: 'Your Lifestyle',
+    question: 'What activities do you enjoy at home? (Select all that apply)',
+    type: 'multiple',
+    options: [
+      { value: 'reading', label: '📖 Reading', description: 'Cozy reading nook, bookshelf, good lighting' },
+      { value: 'gaming', label: '🎮 Gaming', description: 'Gaming setup, ergonomic chair, monitor stand' },
+      { value: 'fitness', label: '💪 Fitness/Exercise', description: 'Space for yoga mat, dumbbells, exercise equipment' },
+      { value: 'music', label: '🎸 Playing Music', description: 'Instrument stands, acoustic considerations' },
+      { value: 'art', label: '🎨 Art/Crafts', description: 'Art desk, storage, good natural light' },
+      { value: 'meditation', label: '🧘 Meditation/Yoga', description: 'Zen corner, plants, calming atmosphere' },
+      { value: 'work', label: '💼 Work from Home', description: 'Desk setup, ergonomic chair, good lighting' },
+      { value: 'movies', label: '🎬 Watching Movies', description: 'TV setup, comfortable seating, ambient lighting' },
     ],
   },
   // The "Chaos" Scale
@@ -94,6 +111,24 @@ const questions = [
       { value: 'morning', label: '🌅 Golden Hour (Sunrise/Early morning)', description: 'Warm, natural lighting' },
       { value: 'afternoon', label: '☀️ The heat of the afternoon', description: 'Bright, energetic lighting' },
       { value: 'night', label: '🌙 Deep Night (After 10 PM)', description: 'Ambient, cool-toned lighting' },
+    ],
+  },
+  {
+    id: 'sleepPreference',
+    category: 'Routine & Lighting',
+    question: 'How do you prefer to wake up?',
+    type: 'single',
+    options: [
+      { 
+        value: 'natural', 
+        label: '☀️ With natural sunlight streaming in',
+        description: 'Bed facing window, sheer curtains, sunrise alarm'
+      },
+      { 
+        value: 'dark', 
+        label: '🌑 In complete darkness until I\'m ready',
+        description: 'Blackout curtains, blinds, cave-like bedroom'
+      },
     ],
   },
   {
@@ -175,6 +210,7 @@ const questions = [
 ];
 
 export function IdentityQuiz() {
+  const SKIP_VALUE = '__skipped__';
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [budgetRange, setBudgetRange] = useState([5000]);
@@ -210,6 +246,12 @@ export function IdentityQuiz() {
     }
   };
 
+  const handleSkip = () => {
+    const value = currentQuestion.type === 'multiple' ? [SKIP_VALUE] : SKIP_VALUE;
+    setAnswers({ ...answers, [currentQuestion.id]: value });
+    handleNext();
+  };
+
   const handlePrevious = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
@@ -217,37 +259,51 @@ export function IdentityQuiz() {
   };
 
   const handleSubmit = () => {
+    const normalizeArray = (value: any) => {
+      if (!Array.isArray(value)) return [];
+      return value.filter((item) => item !== SKIP_VALUE);
+    };
+    const normalizeValue = (value: any) => (value === SKIP_VALUE ? undefined : value);
+
     // Map chaos level to traits
     const traitsFromAnswers: IdentityTrait[] = [];
-    if (answers.chaosLevel === 'minimalist') traitsFromAnswers.push('minimalist');
-    if (answers.chaosLevel === 'maximalist') traitsFromAnswers.push('creative');
-    if (answers.materialPreference === 'analog') traitsFromAnswers.push('vintage');
-    if (answers.materialPreference === 'futurist') traitsFromAnswers.push('modern');
-    if (answers.viewPreference === 'nature') traitsFromAnswers.push('cozy');
-    if (answers.viewPreference === 'urban') traitsFromAnswers.push('sophisticated');
+    if (normalizeValue(answers.chaosLevel) === 'minimalist') traitsFromAnswers.push('minimalist');
+    if (normalizeValue(answers.chaosLevel) === 'maximalist') traitsFromAnswers.push('creative');
+    if (normalizeValue(answers.materialPreference) === 'analog') traitsFromAnswers.push('vintage');
+    if (normalizeValue(answers.materialPreference) === 'futurist') traitsFromAnswers.push('modern');
+    if (normalizeValue(answers.viewPreference) === 'nature') traitsFromAnswers.push('cozy');
+    if (normalizeValue(answers.viewPreference) === 'urban') traitsFromAnswers.push('sophisticated');
+
+    // Determine sleep preferences
+    const preferNaturalLight = normalizeValue(answers.sleepPreference) === 'natural';
+    const preferDarkRoom = normalizeValue(answers.sleepPreference) === 'dark';
 
     const profile: IdentityProfile = {
       primaryTraits: traitsFromAnswers.slice(0, 3) as IdentityTrait[],
       secondaryTraits: [] as IdentityTrait[],
-      colorPreferences: answers.colorPreferences || [],
+      colorPreferences: normalizeArray(answers.colorPreferences),
       stylePreferences: [],
-      lifestyle: answers.socialStyle === 'extrovert' ? 'active' : 'relaxed',
-      workFromHome: true,
-      hobbies: [],
+      lifestyle: normalizeValue(answers.socialStyle) === 'extrovert' ? 'active' : 'relaxed',
+      workFromHome: normalizeArray(answers.activities).includes('work'),
+      hobbies: normalizeArray(answers.activities),
       budget: {
         min: Math.max(500, budgetRange[0] * 0.5),
         max: budgetRange[0] * 2,
         currency: 'USD',
       },
       // New fields
-      socialStyle: answers.socialStyle,
-      isHost: answers.isHost === 'true',
-      chaosLevel: answers.chaosLevel,
-      emptySpaceFeeling: answers.emptySpaceFeeling,
-      chronotype: answers.chronotype || [],
-      viewPreference: answers.viewPreference,
-      materialPreference: answers.materialPreference,
-      techVisibility: answers.techVisibility,
+      socialStyle: normalizeValue(answers.socialStyle),
+      isHost: normalizeValue(answers.isHost) === 'true',
+      chaosLevel: normalizeValue(answers.chaosLevel),
+      emptySpaceFeeling: normalizeValue(answers.emptySpaceFeeling),
+      chronotype: normalizeArray(answers.chronotype),
+      viewPreference: normalizeValue(answers.viewPreference),
+      materialPreference: normalizeValue(answers.materialPreference),
+      techVisibility: normalizeValue(answers.techVisibility),
+      // Activity-based fields
+      activities: normalizeArray(answers.activities) as LifestyleActivity[],
+      preferNaturalLight,
+      preferDarkRoom,
     };
 
     setIdentityProfile(profile);
@@ -269,59 +325,54 @@ export function IdentityQuiz() {
   const progress = ((currentStep + 1) / questions.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 py-12">
-      <div className="container mx-auto px-4 max-w-2xl">
-        {/* Progress header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between text-white/60 text-sm mb-3">
-            <span className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center text-xs text-white">
-                {currentStep + 1}
-              </span>
-              {currentQuestion.category}
-            </span>
-            <span>{currentStep + 1} / {questions.length}</span>
-          </div>
-          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+    <div className="min-h-screen bg-[#0B0F14] text-white relative overflow-hidden py-10">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:48px_48px]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
+
+      <div className="relative z-10 container mx-auto px-6 max-w-5xl">
+        <div className="flex items-center justify-between text-xs text-white/60 mb-4">
+          <span>Question {currentStep + 1} of {questions.length}</span>
+          <span>{Math.round(progress)}% Complete</span>
+        </div>
+        <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-10">
+          <div className="h-full bg-indigo-500 transition-all" style={{ width: `${progress}%` }} />
         </div>
 
-        <Card className="bg-white/10 backdrop-blur-lg border-white/20 text-white">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-2xl font-light leading-relaxed">
-              {currentQuestion.question}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 text-xs text-white/80 mb-4">
+            Personality Analysis
+          </div>
+          <h1 className="text-3xl md:text-4xl font-semibold">{currentQuestion.question}</h1>
+          <p className="text-white/60 mt-3">
+            Select all options that resonate with you. Your choices shape your personal design.
+          </p>
+        </div>
+
+        <Card className="bg-white/5 border-white/10 text-white">
+          <CardContent className="py-8">
             {currentQuestion.type === 'range' ? (
-              <div className="space-y-6 py-4">
+              <div className="space-y-6">
                 <div className="text-center">
-                  <div className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+                  <div className="text-5xl font-bold text-indigo-300 mb-2">
                     ${budgetRange[0].toLocaleString()}
                   </div>
-                  <p className="text-white/50 text-sm">Estimated total budget</p>
+                  <p className="text-white/50 text-sm">Total budget</p>
                 </div>
-                <div className="px-4">
-                  <Slider
-                    value={budgetRange}
-                    onValueChange={setBudgetRange}
-                    min={1000}
-                    max={50000}
-                    step={500}
-                    className="w-full"
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-white/40 px-4">
+                <Slider
+                  value={budgetRange}
+                  onValueChange={setBudgetRange}
+                  min={1000}
+                  max={50000}
+                  step={500}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-white/40">
                   <span>$1,000</span>
                   <span>$50,000</span>
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid md:grid-cols-2 gap-4">
                 {currentQuestion.options?.map((option) => {
                   const isSelected =
                     currentQuestion.type === 'multiple'
@@ -332,79 +383,60 @@ export function IdentityQuiz() {
                     <button
                       key={option.value}
                       onClick={() => handleAnswer(option.value)}
-                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                      className={`rounded-xl border px-5 py-4 text-left transition-all ${
                         isSelected
-                          ? 'border-purple-400 bg-purple-500/20 shadow-lg shadow-purple-500/20'
-                          : 'border-white/10 bg-white/5 hover:border-white/30 hover:bg-white/10'
+                          ? 'border-indigo-400 bg-indigo-500/20'
+                          : 'border-white/10 bg-white/5 hover:border-white/30'
                       }`}
                     >
-                      <div className="font-medium text-lg">{option.label}</div>
-                      {option.description && (
-                        <div className={`text-sm mt-1 ${isSelected ? 'text-purple-200' : 'text-white/40'}`}>
-                          {option.description}
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-medium text-base">{option.label}</div>
+                          {option.description && (
+                            <div className="text-sm text-white/50 mt-1">{option.description}</div>
+                          )}
                         </div>
-                      )}
+                        <div className={`w-4 h-4 rounded border ${isSelected ? 'bg-indigo-400 border-indigo-400' : 'border-white/30'}`} />
+                      </div>
                     </button>
                   );
                 })}
               </div>
             )}
-
-            <div className="flex justify-between pt-8">
-              <Button
-                variant="outline"
-                onClick={handlePrevious}
-                disabled={currentStep === 0}
-                className="bg-transparent border-white/20 text-white hover:bg-white/10 disabled:opacity-30"
-              >
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-              <Button
-                onClick={handleNext}
-                disabled={!canProceed()}
-                className={`${
-                  isLastStep 
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600' 
-                    : 'bg-white/20 hover:bg-white/30'
-                } text-white border-0`}
-              >
-                {isLastStep ? (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generate Design
-                  </>
-                ) : (
-                  <>
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
-        {/* Quick summary of selections */}
-        {Object.keys(answers).length > 0 && (
-          <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-white/40 text-xs uppercase tracking-wider mb-2">Your selections</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(answers).map(([key, value]) => {
-                if (!value || (Array.isArray(value) && value.length === 0)) return null;
-                const displayValue = Array.isArray(value) ? value.join(', ') : value;
-                return (
-                  <span 
-                    key={key}
-                    className="px-3 py-1 bg-purple-500/20 text-purple-200 text-xs rounded-full"
-                  >
-                    {displayValue}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <div className="flex items-center justify-between mt-8 text-sm">
+          <Button
+            variant="ghost"
+            className="text-white/70"
+            onClick={handlePrevious}
+            disabled={currentStep === 0}
+          >
+            <ChevronLeft className="h-4 w-4 mr-2" />
+            Previous
+          </Button>
+          <Button variant="ghost" className="text-white/50 hover:text-white" onClick={handleSkip}>
+            Skip Question
+          </Button>
+          <Button
+            onClick={handleNext}
+            disabled={!canProceed()}
+            className="bg-indigo-600 hover:bg-indigo-500"
+          >
+            {isLastStep ? (
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generate Design
+              </>
+            ) : (
+              <>
+                Next Question
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

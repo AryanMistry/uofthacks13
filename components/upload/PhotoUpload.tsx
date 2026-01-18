@@ -125,7 +125,7 @@ export function PhotoUpload() {
           roomDimensions: segmentData.roomDimensions,
           wallColor: segmentData.wallColor,
           floorColor: segmentData.floorColor,
-          lightingType: segmentData.lightingType,
+          lighting: segmentData.lighting,
         });
         
         setAnalysisStep(`Found ${segmentData.objects?.length || 0} objects!`);
@@ -136,7 +136,7 @@ export function PhotoUpload() {
         dimensions: roomDimensions,
         shape: { type: 'rectangle' },
         photoUrls: previews,
-        floorplanUrl: floorplanPreview || undefined,
+        floorplanImageUrl: floorplanPreview || undefined,
       };
 
       setRoomData(roomData);
@@ -160,13 +160,13 @@ export function PhotoUpload() {
   return (
     <div className="space-y-6">
       {/* Room Photos */}
-      <Card>
+      <Card className="bg-white/5 border-white/10 text-white">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-white">
             <ImageIcon className="h-5 w-5" />
             Room Photos
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-white/50">
             Upload 1-6 photos of your room (more angles = better analysis)
           </CardDescription>
         </CardHeader>
@@ -176,16 +176,16 @@ export function PhotoUpload() {
               {...getRootProps()}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
                 isDragActive
-                  ? 'border-primary bg-primary/5'
-                  : 'border-gray-300 hover:border-primary/50'
+                  ? 'border-indigo-400 bg-indigo-500/10'
+                  : 'border-white/20 hover:border-indigo-400/60'
               }`}
             >
               <input {...getInputProps()} />
-              <Upload className="mx-auto h-10 w-10 text-gray-400 mb-3" />
-              <p className="text-sm font-medium mb-1">
+              <Upload className="mx-auto h-10 w-10 text-white/60 mb-3" />
+              <p className="text-sm font-medium mb-1 text-white">
                 {isDragActive ? 'Drop photos here' : 'Drag & drop room photos here'}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-white/50">
                 or click to browse ({files.length}/6 uploaded)
               </p>
             </div>
@@ -194,7 +194,7 @@ export function PhotoUpload() {
           {previews.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {previews.map((preview, index) => (
-                <div key={index} className="relative rounded-lg overflow-hidden border group">
+                <div key={index} className="relative rounded-lg overflow-hidden border border-white/10 group">
                   <img
                     src={preview}
                     alt={`Room photo ${index + 1}`}
@@ -202,7 +202,7 @@ export function PhotoUpload() {
                   />
                   <button
                     onClick={() => handleRemove(index)}
-                    className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-lg hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow-lg hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -219,13 +219,13 @@ export function PhotoUpload() {
       </Card>
 
       {/* Optional Floorplan */}
-      <Card className="border-dashed">
+      <Card className="border-dashed bg-white/5 border-white/10 text-white">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base text-white">
             <Map className="h-4 w-4" />
             Floorplan (Optional)
           </CardTitle>
-          <CardDescription className="text-xs">
+          <CardDescription className="text-xs text-white/50">
             Adding a floorplan significantly improves furniture positioning accuracy
           </CardDescription>
         </CardHeader>
@@ -235,12 +235,12 @@ export function PhotoUpload() {
               {...getFloorplanRootProps()}
               className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
                 isFloorplanDragActive
-                  ? 'border-primary bg-primary/5'
-                  : 'border-gray-200 hover:border-primary/30'
+                  ? 'border-indigo-400 bg-indigo-500/10'
+                  : 'border-white/20 hover:border-indigo-400/60'
               }`}
             >
               <input {...getFloorplanInputProps()} />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-white/50">
                 Drop floorplan image or click to upload
               </p>
             </div>
@@ -249,18 +249,18 @@ export function PhotoUpload() {
               <img
                 src={floorplanPreview}
                 alt="Floorplan"
-                className="h-24 w-auto rounded border"
+                className="h-24 w-auto rounded border border-white/20"
               />
               <button
                 onClick={() => {
                   setFloorplanFile(null);
                   setFloorplanPreview(null);
                 }}
-                className="absolute -top-2 -right-2 p-1 bg-white rounded-full shadow-lg hover:bg-gray-100"
+                className="absolute -top-2 -right-2 p-1 bg-white/90 rounded-full shadow-lg hover:bg-white"
               >
                 <X className="h-3 w-3" />
               </button>
-              <div className="flex items-center gap-1 mt-1 text-xs text-green-600">
+              <div className="flex items-center gap-1 mt-1 text-xs text-green-400">
                 <CheckCircle className="h-3 w-3" />
                 Floorplan added
               </div>
@@ -271,7 +271,7 @@ export function PhotoUpload() {
 
       {/* Analysis Status */}
       {analysisStep && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+        <div className="p-3 bg-white/10 border border-white/10 rounded-lg text-sm text-white/80 flex items-center gap-2">
           {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
           {analysisStep}
         </div>
@@ -282,7 +282,7 @@ export function PhotoUpload() {
         <Button
           onClick={handleUpload}
           disabled={uploading}
-          className="w-full"
+          className="w-full bg-indigo-600 hover:bg-indigo-500"
           size="lg"
         >
           {uploading ? (
@@ -292,8 +292,7 @@ export function PhotoUpload() {
             </>
           ) : (
             <>
-              Analyze {files.length} Photo{files.length > 1 ? 's' : ''}
-              {floorplanFile && ' + Floorplan'}
+              Analyze Images
             </>
           )}
         </Button>

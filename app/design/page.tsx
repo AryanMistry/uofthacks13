@@ -7,23 +7,25 @@ import { useSegmentationStore } from '@/lib/store/segmentation-store';
 import { RoomData } from '@/lib/types/room';
 import { IdentityProfile } from '@/lib/types/identity';
 import { BeforeAfter } from '@/components/results/BeforeAfter';
-import { ShoppingList } from '@/components/results/ShoppingList';
+import { ReasoningPanel } from '@/components/results/ReasoningPanel';
 import { ProductCard } from '@/components/results/ProductCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Product, ShoppingList as ShoppingListType } from '@/lib/types/product';
+import { Product } from '@/lib/types/product';
 import { DesignResult } from '@/lib/types/design';
 import { Loader2, Box } from 'lucide-react';
 import Link from 'next/link';
+import { getDefaultRoomResult } from '@/lib/defaults/bedroom-layout';
 
 export default function DesignPage() {
   const router = useRouter();
   const { roomData, identityProfile, designResult, setDesignResult, setRoomData, setIdentityProfile } = useDesignStore();
   const generatedModels = useSegmentationStore((state) => state.generatedModels);
   const segmentationResult = useSegmentationStore((state) => state.segmentationResult);
+  const setSegmentationResult = useSegmentationStore((state) => state.setSegmentationResult);
+  const setGeneratedModels = useSegmentationStore((state) => state.setGeneratedModels);
   const [loading, setLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [shoppingList, setShoppingList] = useState<ShoppingListType | null>(null);
   const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
@@ -47,19 +49,6 @@ export default function DesignPage() {
 
     if (!designResult) {
       generateDesign();
-    } else {
-      // Create shopping list from design result
-      const products = [
-        ...designResult.designLayout.furniture,
-        ...designResult.designLayout.lighting,
-        ...designResult.designLayout.decorations,
-      ];
-      const totalPrice = products.reduce((sum, p) => sum + p.price, 0);
-      setShoppingList({
-        products,
-        totalPrice,
-        currency: 'USD',
-      });
     }
   }, [roomData, identityProfile, designResult]);
 
@@ -71,25 +60,42 @@ export default function DesignPage() {
   }, [isDemo, roomData, identityProfile, designResult]);
 
   const loadDemoData = () => {
-    // Set demo room data
+    // Set demo room data - this is just for demo purposes
+    // The actual quiz responses will override these when user goes through the quiz
     const demoRoomData = {
-      dimensions: { length: 15, width: 12, height: 9, unit: 'ft' as const },
+      dimensions: { length: 18, width: 14, height: 10, unit: 'ft' as const },
       shape: { type: 'rectangle' as const },
     };
     
-    const demoIdentityProfile = {
-      primaryTraits: ['modern', 'minimalist', 'sophisticated'] as any[],
-      secondaryTraits: [] as any[],
-      colorPreferences: ['neutral', 'cool'],
+    // Demo profile - shows a cool/modern aesthetic
+    // Real users will have their actual quiz responses
+    const demoIdentityProfile: IdentityProfile = {
+      primaryTraits: ['modern', 'sophisticated'],
+      secondaryTraits: [],
+      colorPreferences: ['cool'],
       stylePreferences: [],
       lifestyle: 'balanced' as const,
       workFromHome: true,
       hobbies: [],
       budget: { min: 3000, max: 8000, currency: 'USD' },
+      // New quiz fields for demo
+      socialStyle: 'introvert',
+      isHost: false,
+      chaosLevel: 'minimalist',
+      emptySpaceFeeling: 'calming',
+      chronotype: ['night'],
+      viewPreference: 'urban',
+      materialPreference: 'futurist',
+      techVisibility: 'hidden',
     };
 
     setRoomData(demoRoomData);
     setIdentityProfile(demoIdentityProfile);
+    
+    // Load default layout with identity-based colors
+    const defaultLayout = getDefaultRoomResult('living-room', demoIdentityProfile);
+    setSegmentationResult(defaultLayout);
+    setGeneratedModels(defaultLayout.objects);
   };
 
   const generateDesignWithData = async (currentRoomData: RoomData, currentIdentityProfile: IdentityProfile) => {
@@ -97,6 +103,13 @@ export default function DesignPage() {
 
     setLoading(true);
     try {
+      // If no segmentation result, load default layout with identity colors
+      if (!segmentationResult) {
+        const defaultLayout = getDefaultRoomResult('living-room', currentIdentityProfile);
+        setSegmentationResult(defaultLayout);
+        setGeneratedModels(defaultLayout.objects);
+      }
+
       const response = await fetch('/api/generate-design', {
         method: 'POST',
         headers: {
@@ -113,18 +126,6 @@ export default function DesignPage() {
       const result: DesignResult = await response.json();
       setDesignResult(result);
 
-      // Create shopping list
-      const products = [
-        ...result.designLayout.furniture,
-        ...result.designLayout.lighting,
-        ...result.designLayout.decorations,
-      ];
-      const totalPrice = products.reduce((sum, p) => sum + p.price, 0);
-      setShoppingList({
-        products,
-        totalPrice,
-        currency: 'USD',
-      });
     } catch (error) {
       console.error('Design generation error:', error);
       alert('Failed to generate design. Please try again.');
@@ -214,13 +215,10 @@ export default function DesignPage() {
             )}
           </div>
 
-          {/* Shopping List Sidebar */}
+          {/* Reasoning Sidebar */}
           <div className="space-y-6">
-            {shoppingList && (
-              <ShoppingList
-                shoppingList={shoppingList}
-                onProductClick={setSelectedProduct}
-              />
+            {identityProfile && (
+              <ReasoningPanel identityProfile={identityProfile} />
             )}
 
             <Card>

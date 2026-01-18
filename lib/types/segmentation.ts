@@ -29,6 +29,26 @@ export interface SegmentedObject {
   detectedColor?: string;
   material?: string;
   style?: string;
+  // Relationship info
+  nearTo?: string[];
+  againstWall?: boolean;
+}
+
+export interface RoomDoor {
+  x: number;
+  z: number;
+  width: number;
+  wall: 'front' | 'back' | 'left' | 'right' | string;
+}
+
+export interface RoomWindow {
+  x: number;
+  z: number;
+  width: number;
+  height: number;
+  wall: 'front' | 'back' | 'left' | 'right' | string;
+  hasBlinds?: boolean;
+  hasCurtains?: boolean;
 }
 
 export interface SegmentationResult {
@@ -45,4 +65,8 @@ export interface SegmentationResult {
   wallColor?: string;
   floorColor?: string;
   lighting?: string;
+  // Doors and windows
+  doors?: RoomDoor[];
+  windows?: RoomWindow[];
+  roomType?: string;
 }

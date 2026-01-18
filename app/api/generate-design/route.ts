@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RoomData } from '@/lib/types/room';
 import { IdentityProfile, getDesignParameters } from '@/lib/types/identity';
+import { getOnlineModelUrl } from '@/lib/3d/asset-library';
 import { DesignResult, DesignLayout } from '@/lib/types/design';
 import { Product } from '@/lib/types/product';
 
@@ -16,7 +17,7 @@ const mockProducts: Product[] = [
     category: 'furniture',
     dimensions: { length: 7, width: 3, height: 2.5, unit: 'ft' },
     brand: 'Furniture Co',
-    modelUrl: '/models/sofa.glb',
+    modelUrl: getOnlineModelUrl('sofa') || undefined,
   },
   {
     id: 'coffee-table-1',
@@ -27,7 +28,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1532372320572-cda25653a26d?w=400',
     category: 'furniture',
     dimensions: { length: 4, width: 2, height: 1.5, unit: 'ft' },
-    modelUrl: '/models/coffee_table.glb',
+    modelUrl: getOnlineModelUrl('coffee table') || undefined,
   },
   {
     id: 'lamp-1',
@@ -38,7 +39,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400',
     category: 'lighting',
     dimensions: { length: 1, width: 1, height: 5, unit: 'ft' },
-    modelUrl: '/models/lamp.glb',
+    modelUrl: getOnlineModelUrl('lamp') || undefined,
   },
   {
     id: 'rug-1',
@@ -49,7 +50,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=400',
     category: 'textile',
     dimensions: { length: 8, width: 6, height: 0.1, unit: 'ft' },
-    modelUrl: '/models/rug.glb',
+    modelUrl: getOnlineModelUrl('rug') || undefined,
   },
   {
     id: 'bookshelf-1',
@@ -60,7 +61,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1594620302200-9a762244a048?w=400',
     category: 'storage',
     dimensions: { length: 3, width: 1, height: 6, unit: 'ft' },
-    modelUrl: '/models/bookshelf.glb',
+    modelUrl: getOnlineModelUrl('bookshelf') || undefined,
   },
   {
     id: 'chair-1',
@@ -71,7 +72,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=400',
     category: 'furniture',
     dimensions: { length: 2.5, width: 2.5, height: 3, unit: 'ft' },
-    modelUrl: '/models/chair.glb',
+    modelUrl: getOnlineModelUrl('chair') || undefined,
   },
   {
     id: 'desk-1',
@@ -82,7 +83,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=400',
     category: 'furniture',
     dimensions: { length: 5, width: 2.5, height: 2.5, unit: 'ft' },
-    modelUrl: '/models/desk.glb',
+    modelUrl: getOnlineModelUrl('desk') || undefined,
   },
   {
     id: 'plant-1',
@@ -93,7 +94,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=400',
     category: 'decoration',
     dimensions: { length: 1, width: 1, height: 3, unit: 'ft' },
-    modelUrl: '/models/plant.glb',
+    modelUrl: getOnlineModelUrl('plant') || undefined,
   },
   {
     id: 'bed-1',
@@ -104,7 +105,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=400',
     category: 'furniture',
     dimensions: { length: 7, width: 5.5, height: 3, unit: 'ft' },
-    modelUrl: '/models/bed.glb',
+    modelUrl: getOnlineModelUrl('bed') || undefined,
   },
   {
     id: 'tv-1',
@@ -115,7 +116,7 @@ const mockProducts: Product[] = [
     imageUrl: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=400',
     category: 'furniture',
     dimensions: { length: 4, width: 0.5, height: 2.5, unit: 'ft' },
-    modelUrl: '/models/tv.glb',
+    modelUrl: getOnlineModelUrl('tv') || undefined,
   },
 ];
 
@@ -377,7 +378,7 @@ export async function POST(request: NextRequest) {
       layout: {
         furniture: layoutProducts.map((p) => ({
           productId: p.id,
-          position: p.position,
+          position: p.position || { x: 0, y: 0, z: 0 },
           rotation: p.position?.rotation || 0,
         })),
       },
@@ -417,7 +418,7 @@ export async function POST(request: NextRequest) {
       layout: {
         furniture: fallbackProducts.map((p) => ({
           productId: p.id,
-          position: p.position,
+          position: p.position || { x: 0, y: 0, z: 0 },
           rotation: p.position?.rotation || 0,
         })),
       },

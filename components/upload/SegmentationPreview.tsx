@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSegmentationStore } from '@/lib/store/segmentation-store';
-import { Check, Loader2, Box, Image as ImageIcon, Layout } from 'lucide-react';
+import { useDesignStore } from '@/lib/store/design-store';
+import { Check, Loader2, Box, Image as ImageIcon, Layout, DoorOpen, Square } from 'lucide-react';
 
 interface SegmentationPreviewProps {
   onComplete: () => void;
@@ -30,6 +31,9 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
     setProcessing,
   } = useSegmentationStore();
 
+  // Get identity profile from design store for personality-based items
+  const identityProfile = useDesignStore((state) => state.identityProfile);
+
   const [generating, setGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
 
@@ -47,6 +51,10 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
         selectedObjects.includes(obj.id)
       );
 
+      // Get doors and windows from segmentation result
+      const doors = (segmentationResult as any).doors || [];
+      const windows = (segmentationResult as any).windows || [];
+
       // Use the smart layout API which positions furniture intelligently
       const response = await fetch('/api/generate-3d-model', {
         method: 'POST',
@@ -54,18 +62,22 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
         body: JSON.stringify({
           objects: selectedObjs,
           roomDimensions: segmentationResult.roomDimensions || {
-            length: 15,
-            width: 12,
-            height: 9,
+            length: 20,
+            width: 16,
+            height: 10,
             unit: 'ft',
           },
+          doors,
+          windows,
+          identityProfile: identityProfile || undefined,
+          useImagePositions: true, // Use positions detected from image
         }),
       });
 
       if (!response.ok) throw new Error('Failed to generate layout');
 
       const data = await response.json();
-      
+
       if (data.success && data.models) {
         // The API returns objects with smart 3D positions
         const modelsWithLayout = data.models.map((model: any) => ({
@@ -83,19 +95,19 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
         setGeneratedModels(modelsWithLayout);
         setGenerationStatus(`Layout complete! ${modelsWithLayout.length} objects positioned.`);
       }
-      
+
       setTimeout(() => {
         onComplete();
       }, 500);
     } catch (error) {
       console.error('Error generating layout:', error);
       setGenerationStatus('Using basic positioning...');
-      
+
       // Fallback: use objects as-is with their initial positions
       const selectedObjs = segmentationResult.objects.filter((obj) =>
         selectedObjects.includes(obj.id)
       );
-      
+
       const fallbackModels = selectedObjs.map((obj) => ({
         id: obj.id,
         label: obj.label,
@@ -107,9 +119,9 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
         detectedColor: obj.detectedColor,
         generationType: 'procedural',
       }));
-      
+
       setGeneratedModels(fallbackModels);
-      
+
       setTimeout(() => {
         onComplete();
       }, 1000);
@@ -172,11 +184,10 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
             <button
               key={obj.id}
               onClick={() => toggleObjectSelection(obj.id)}
-              className={`relative rounded-lg border-2 transition-all overflow-hidden ${
-                isSelected(obj.id)
+              className={`relative rounded-lg border-2 transition-all overflow-hidden ${isSelected(obj.id)
                   ? 'border-primary ring-2 ring-primary/20'
                   : 'border-gray-200 hover:border-gray-300'
-              }`}
+                }`}
             >
               {/* Cropped image preview */}
               {obj.croppedImageUrl ? (
@@ -192,32 +203,31 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
                   <ImageIcon className="w-8 h-8 text-gray-400" />
                 </div>
               )}
-              
+
               {/* Selection indicator */}
               <div
-                className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center shadow ${
-                  isSelected(obj.id) ? 'bg-primary text-white' : 'bg-white'
-                }`}
+                className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center shadow ${isSelected(obj.id) ? 'bg-primary text-white' : 'bg-white'
+                  }`}
               >
                 {isSelected(obj.id) && <Check className="w-4 h-4" />}
               </div>
 
               {/* Color swatch */}
               {obj.detectedColor && (
-                <div 
+                <div
                   className="absolute top-2 left-2 w-5 h-5 rounded-full border-2 border-white shadow"
                   style={{ backgroundColor: obj.detectedColor }}
                   title={`Color: ${obj.detectedColor}`}
                 />
               )}
-              
+
               {/* Info overlay */}
               <div className="p-2 bg-white">
                 <div className="flex items-center gap-1 mb-1">
                   <div className={`w-2 h-2 rounded-full ${categoryColors[obj.category]}`} />
                   <span className="font-medium text-sm capitalize truncate">{obj.label}</span>
                 </div>
-                
+
                 {obj.estimatedDimensions && (
                   <div className="text-xs text-muted-foreground">
                     {obj.estimatedDimensions.length.toFixed(1)}×
@@ -252,15 +262,15 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
                   Room Dimensions
                 </h4>
                 <div className="text-sm text-muted-foreground mt-1">
-                  {segmentationResult.roomDimensions.length}×
-                  {segmentationResult.roomDimensions.width}×
-                  {segmentationResult.roomDimensions.height} ft
+                  {segmentationResult.roomDimensions.length.toFixed(0)}×
+                  {segmentationResult.roomDimensions.width.toFixed(0)}×
+                  {segmentationResult.roomDimensions.height.toFixed(0)} ft
                 </div>
               </div>
               <div className="flex gap-4">
                 {segmentationResult.wallColor && (
                   <div className="flex items-center gap-2">
-                    <div 
+                    <div
                       className="w-6 h-6 rounded border shadow-sm"
                       style={{ backgroundColor: segmentationResult.wallColor }}
                     />
@@ -269,7 +279,7 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
                 )}
                 {segmentationResult.floorColor && (
                   <div className="flex items-center gap-2">
-                    <div 
+                    <div
                       className="w-6 h-6 rounded border shadow-sm"
                       style={{ backgroundColor: segmentationResult.floorColor }}
                     />
@@ -278,11 +288,23 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
                 )}
               </div>
             </div>
-            
+
+            {/* Windows and Doors */}
+            <div className="mt-3 pt-3 border-t border-gray-300/50 flex gap-4">
+              <div className="flex items-center gap-2 text-xs">
+                <Square className="w-4 h-4 text-blue-500" />
+                <span>Windows: {(segmentationResult as any).windows?.length || 0}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <DoorOpen className="w-4 h-4 text-amber-600" />
+                <span>Doors: {(segmentationResult as any).doors?.length || 0}</span>
+              </div>
+            </div>
+
             {/* Smart Layout Info */}
             <div className="mt-3 pt-3 border-t border-gray-300/50 text-xs text-muted-foreground">
-              <strong>Smart Layout:</strong> Furniture will be positioned logically — sofas against walls, 
-              coffee tables in front, beds centered, with proper spacing and no overlaps.
+              <strong>Smart Layout:</strong> Furniture positioned based on your image &amp; personality —
+              morning person gets bed facing window, studious person gets a desk, etc.
             </div>
           </div>
         )}
