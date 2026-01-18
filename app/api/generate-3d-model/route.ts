@@ -437,6 +437,14 @@ export async function POST(request: NextRequest) {
     const roomW = roomDimensions?.width || 16;
     const wallPadding = 1.0;
 
+    // Check if we have custom room shape from floorplan
+    const roomShape = (body as any).roomShape;
+    const hasCustomShape = roomShape?.walls && roomShape.walls.length > 0;
+    
+    if (hasCustomShape) {
+      console.log('Using custom room shape from floorplan with', roomShape.walls.length, 'walls');
+    }
+
     // Get design parameters from identity profile
     const designParams = identityProfile ? getDesignParameters(identityProfile) : null;
 

@@ -9,6 +9,7 @@ import { RoomData } from '@/lib/types/room';
 import { useSegmentationStore } from '@/lib/store/segmentation-store';
 import { createDetailedProceduralFurniture } from '@/lib/3d/procedural-furniture';
 import { getOnlineModelUrl, getOnlineModelUrls } from '@/lib/3d/asset-library';
+import { generateRoomGeometry, addDoors, addWindows } from '@/lib/3d/room-geometry';
 
 interface RoomCanvasProps {
   roomData: RoomData;
@@ -454,288 +455,30 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
     directionalLight.shadow.bias = -0.0001;
     scene.add(directionalLight);
 
-    // Floor
-    const floorGeometry = new THREE.PlaneGeometry(roomLength, roomWidth, 20, 20);
-    const floorMaterial = new THREE.MeshStandardMaterial({
-      color: 0xB8860B,
-      roughness: 0.7,
-      metalness: 0.05
-    });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = 0;
-    floor.receiveShadow = true;
-    floor.name = 'floor';
-    scene.add(floor);
+    // Generate room geometry from floorplan data
+    const roomShape = segmentationResult?.roomShape;
+    const roomGeometry = generateRoomGeometry(roomShape, roomLength, roomWidth, roomHeight, unit);
+    
+    // Add floor
+    scene.add(roomGeometry.floor);
 
-    // Walls
-    const createWallMaterial = () => new THREE.MeshStandardMaterial({
-      color: 0xFAF0E6,
-      roughness: 0.9,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 1,
+    // Add walls and store for dynamic visibility
+    const walls: Record<string, { mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial }> = {};
+    roomGeometry.walls.forEach((wallMesh) => {
+      scene.add(wallMesh);
+      const wallName = wallMesh.name.replace('wall-', '');
+      walls[wallName] = {
+        mesh: wallMesh,
+        mat: wallMesh.material as THREE.MeshStandardMaterial,
+      };
     });
 
-    const backWallMat = createWallMaterial();
-    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomLength, roomHeight), backWallMat);
-    backWall.position.set(0, roomHeight / 2, -roomWidth / 2);
-    backWall.receiveShadow = true;
-    backWall.name = 'wall-back';
-    scene.add(backWall);
-
-    const frontWallMat = createWallMaterial();
-    const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(roomLength, roomHeight), frontWallMat);
-    frontWall.position.set(0, roomHeight / 2, roomWidth / 2);
-    frontWall.rotation.y = Math.PI;
-    frontWall.receiveShadow = true;
-    frontWall.name = 'wall-front';
-    scene.add(frontWall);
-
-    const leftWallMat = createWallMaterial();
-    const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomWidth, roomHeight), leftWallMat);
-    leftWall.rotation.y = Math.PI / 2;
-    leftWall.position.set(-roomLength / 2, roomHeight / 2, 0);
-    leftWall.receiveShadow = true;
-    leftWall.name = 'wall-left';
-    scene.add(leftWall);
-
-    const rightWallMat = createWallMaterial();
-    const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(roomWidth, roomHeight), rightWallMat);
-    rightWall.rotation.y = -Math.PI / 2;
-    rightWall.position.set(roomLength / 2, roomHeight / 2, 0);
-    rightWall.receiveShadow = true;
-    rightWall.name = 'wall-right';
-    scene.add(rightWall);
-
-    const walls = {
-      back: { mesh: backWall, mat: backWallMat },
-      front: { mesh: frontWall, mat: frontWallMat },
-      left: { mesh: leftWall, mat: leftWallMat },
-      right: { mesh: rightWall, mat: rightWallMat },
-    };
-
-    // Baseboard
-    const baseboardMaterial = new THREE.MeshStandardMaterial({ color: 0xF5F5F5, roughness: 0.5 });
-    const baseboardHeight = 0.08;
-    const backBaseboard = new THREE.Mesh(
-      new THREE.BoxGeometry(roomLength, baseboardHeight, 0.02),
-      baseboardMaterial
-    );
-    backBaseboard.position.set(0, baseboardHeight / 2, -roomWidth / 2 + 0.01);
-    scene.add(backBaseboard);
-
-    // Windows and Doors
-    const addWindows = () => {
-      const windows = segmentationResult?.windows || [];
-      if (windows.length === 0) return;
-
-      for (const win of windows) {
-        const winWidth = (win.width || 4) * unit;
-        const winHeight = (win.height || 4) * unit;
-        const winX = (win.x || 0) * unit;
-        const winZ = (win.z || 0) * unit;
-
-        // Window frame
-        const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.3 });
-        const frameThickness = 0.05;
-
-        // Window glass
-        const glassMaterial = new THREE.MeshStandardMaterial({
-          color: 0x87CEEB,
-          transparent: true,
-          opacity: 0.3,
-          metalness: 0.1,
-          roughness: 0.1,
-        });
-
-        const wallInset = 0.06;
-        let frameX = 0, frameY = roomHeight * 0.55, frameZ = 0;
-        let frameRotation = 0;
-
-        switch (win.wall) {
-          case 'left':
-            frameX = -roomLength / 2 + wallInset;
-            frameZ = winZ;
-            frameRotation = Math.PI / 2;
-            break;
-          case 'right':
-            frameX = roomLength / 2 - wallInset;
-            frameZ = winZ;
-            frameRotation = -Math.PI / 2;
-            break;
-          case 'back':
-            frameX = winX;
-            frameZ = -roomWidth / 2 + wallInset;
-            frameRotation = 0;
-            break;
-          case 'front':
-            frameX = winX;
-            frameZ = roomWidth / 2 - wallInset;
-            frameRotation = Math.PI;
-            break;
-        }
-
-        // Create window group
-        const windowGroup = new THREE.Group();
-
-        // Glass pane
-        const glass = new THREE.Mesh(
-          new THREE.PlaneGeometry(winWidth, winHeight),
-          glassMaterial
-        );
-        windowGroup.add(glass);
-
-        // Window frame (4 sides)
-        const topFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(winWidth + frameThickness * 2, frameThickness, 0.02),
-          frameMaterial
-        );
-        topFrame.position.y = winHeight / 2;
-        windowGroup.add(topFrame);
-
-        const bottomFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(winWidth + frameThickness * 2, frameThickness, 0.02),
-          frameMaterial
-        );
-        bottomFrame.position.y = -winHeight / 2;
-        windowGroup.add(bottomFrame);
-
-        const leftFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(frameThickness, winHeight, 0.02),
-          frameMaterial
-        );
-        leftFrame.position.x = -winWidth / 2;
-        windowGroup.add(leftFrame);
-
-        const rightFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(frameThickness, winHeight, 0.02),
-          frameMaterial
-        );
-        rightFrame.position.x = winWidth / 2;
-        windowGroup.add(rightFrame);
-
-        // Center divider
-        const centerVertical = new THREE.Mesh(
-          new THREE.BoxGeometry(frameThickness / 2, winHeight, 0.02),
-          frameMaterial
-        );
-        windowGroup.add(centerVertical);
-
-        const centerHorizontal = new THREE.Mesh(
-          new THREE.BoxGeometry(winWidth, frameThickness / 2, 0.02),
-          frameMaterial
-        );
-        windowGroup.add(centerHorizontal);
-
-        windowGroup.position.set(frameX, frameY, frameZ);
-        windowGroup.rotation.y = frameRotation;
-        windowGroup.name = 'window';
-        scene.add(windowGroup);
-      }
-    };
-
-    const addDoors = () => {
-      const doors = segmentationResult?.doors || [];
-      if (doors.length === 0) return;
-
-      for (const door of doors) {
-        const doorWidth = (door.width || 3) * unit;
-        const doorHeight = roomHeight * 0.85;
-        const doorX = (door.x || 0) * unit;
-        const doorZ = (door.z || 0) * unit;
-
-        const doorMaterial = new THREE.MeshStandardMaterial({
-          color: 0x8B4513,
-          roughness: 0.6
-        });
-        const frameMaterial = new THREE.MeshStandardMaterial({
-          color: 0xF5F5F5,
-          roughness: 0.3
-        });
-
-        const wallInset = 0.08;
-        let frameX = 0, frameY = doorHeight / 2, frameZ = 0;
-        let frameRotation = 0;
-
-        switch (door.wall) {
-          case 'front':
-            frameX = doorX;
-            frameZ = roomWidth / 2 - wallInset;
-            frameRotation = Math.PI;
-            break;
-          case 'back':
-            frameX = doorX;
-            frameZ = -roomWidth / 2 + wallInset;
-            frameRotation = 0;
-            break;
-          case 'left':
-            frameX = -roomLength / 2 + wallInset;
-            frameZ = doorZ;
-            frameRotation = Math.PI / 2;
-            break;
-          case 'right':
-            frameX = roomLength / 2 - wallInset;
-            frameZ = doorZ;
-            frameRotation = -Math.PI / 2;
-            break;
-        }
-
-        const doorGroup = new THREE.Group();
-
-        // Door panel
-        const doorPanel = new THREE.Mesh(
-          new THREE.BoxGeometry(doorWidth * 0.9, doorHeight * 0.95, 0.04),
-          doorMaterial
-        );
-        doorPanel.castShadow = true;
-        doorGroup.add(doorPanel);
-
-        // Door handle
-        const handleMaterial = new THREE.MeshStandardMaterial({
-          color: 0xC0C0C0,
-          metalness: 0.8,
-          roughness: 0.2
-        });
-        const handle = new THREE.Mesh(
-          new THREE.BoxGeometry(0.1, 0.03, 0.08),
-          handleMaterial
-        );
-        handle.position.set(doorWidth * 0.35, 0, 0.04);
-        doorGroup.add(handle);
-
-        // Door frame
-        const frameThickness = 0.05;
-        const topFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(doorWidth + frameThickness * 2, frameThickness, 0.06),
-          frameMaterial
-        );
-        topFrame.position.y = doorHeight / 2;
-        doorGroup.add(topFrame);
-
-        const leftFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(frameThickness, doorHeight + frameThickness, 0.06),
-          frameMaterial
-        );
-        leftFrame.position.x = -doorWidth / 2;
-        doorGroup.add(leftFrame);
-
-        const rightFrame = new THREE.Mesh(
-          new THREE.BoxGeometry(frameThickness, doorHeight + frameThickness, 0.06),
-          frameMaterial
-        );
-        rightFrame.position.x = doorWidth / 2;
-        doorGroup.add(rightFrame);
-
-        doorGroup.position.set(frameX, frameY, frameZ);
-        doorGroup.rotation.y = frameRotation;
-        doorGroup.name = 'door';
-        scene.add(doorGroup);
-      }
-    };
-
-    addWindows();
-    addDoors();
+    // Add doors and windows from floorplan data
+    const doors = segmentationResult?.doors || roomData.doors;
+    const windows = segmentationResult?.windows || roomData.windows;
+    
+    addDoors(scene, doors, roomHeight, unit);
+    addWindows(scene, windows, roomHeight, unit);
 
     // Furniture group
     const furnitureGroup = new THREE.Group();
@@ -754,20 +497,29 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
       const targetOpacity = 0.15;
       const fadeSpeed = 0.1;
 
-      const shouldShowBack = camPos.z < 0;
-      const shouldShowFront = camPos.z > roomWidth;
-      const shouldShowLeft = camPos.x < 0;
-      const shouldShowRight = camPos.x > 0;
-
-      const fadeWall = (wall: { mat: THREE.MeshStandardMaterial }, show: boolean) => {
-        const targetOp = show ? 1 : targetOpacity;
-        wall.mat.opacity += (targetOp - wall.mat.opacity) * fadeSpeed;
-      };
-
-      fadeWall(walls.back, shouldShowBack);
-      fadeWall(walls.front, !shouldShowFront);
-      fadeWall(walls.left, shouldShowLeft);
-      fadeWall(walls.right, !shouldShowRight);
+      // Fade walls based on camera position
+      Object.values(walls).forEach(wall => {
+        if (wall && wall.mat) {
+          const wallPos = wall.mesh.position;
+          const wallName = wall.mesh.name;
+          
+          let shouldShow = true;
+          
+          // Determine if wall should be visible based on camera position
+          if (wallName.includes('back') || wallName.includes('N')) {
+            shouldShow = camPos.z < 0;
+          } else if (wallName.includes('front') || wallName.includes('S')) {
+            shouldShow = camPos.z > roomWidth;
+          } else if (wallName.includes('left') || wallName.includes('W')) {
+            shouldShow = camPos.x < 0;
+          } else if (wallName.includes('right') || wallName.includes('E')) {
+            shouldShow = camPos.x > 0;
+          }
+          
+          const targetOp = shouldShow ? 1 : targetOpacity;
+          wall.mat.opacity += (targetOp - wall.mat.opacity) * fadeSpeed;
+        }
+      });
 
       renderer.render(scene, camera);
     };

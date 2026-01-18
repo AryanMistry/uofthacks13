@@ -51,6 +51,19 @@ export interface RoomWindow {
   hasCurtains?: boolean;
 }
 
+export interface Wall {
+  start: { x: number; z: number };
+  end: { x: number; z: number };
+  length: number;
+  cardinal?: string;
+}
+
+export interface RoomShape {
+  type: 'rectangle' | 'L-shape' | 'custom';
+  walls?: Wall[];
+  corners?: { x: number; z: number }[];
+}
+
 export interface SegmentationResult {
   originalImageUrl: string;
   objects: SegmentedObject[];
@@ -69,4 +82,10 @@ export interface SegmentationResult {
   doors?: RoomDoor[];
   windows?: RoomWindow[];
   roomType?: string;
+  // Floorplan-based room shape
+  roomShape?: RoomShape;
+  cardinal?: {
+    north: string;
+    orientation: number;
+  };
 }

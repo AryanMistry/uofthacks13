@@ -5,9 +5,19 @@ export interface RoomDimensions {
   unit: 'ft' | 'meters';
 }
 
+export interface Wall {
+  start: { x: number; z: number };
+  end: { x: number; z: number };
+  length: number;
+  cardinal?: string;
+}
+
 export interface RoomShape {
-  type: 'rectangle' | 'l-shape' | 'custom';
+  type: 'rectangle' | 'L-shape' | 'custom';
   vertices?: { x: number; y: number }[];
+  walls?: Wall[];
+  corners?: { x: number; z: number }[];
+  roomType?: string;
 }
 
 export interface DoorWindow {
@@ -17,13 +27,34 @@ export interface DoorWindow {
   orientation: 'north' | 'south' | 'east' | 'west';
 }
 
+export interface Door {
+  x: number;
+  z: number;
+  width: number;
+  wall: string;
+  cardinal?: string;
+}
+
+export interface Window {
+  x: number;
+  z: number;
+  width: number;
+  height: number;
+  wall: string;
+  cardinal?: string;
+}
+
 export interface RoomData {
   dimensions: RoomDimensions;
   shape: RoomShape;
-  doors?: DoorWindow[];
-  windows?: DoorWindow[];
+  doors?: Door[];
+  windows?: Window[];
   floorplanImageUrl?: string;
   photoUrls?: string[];
+  cardinal?: {
+    north: string;
+    orientation: number;
+  };
 }
 
 export interface RoomAnalysis {

@@ -74,69 +74,89 @@ export function PhotoUpload() {
       return;
     }
 
+    if (!floorplanFile) {
+      alert('Please upload a floorplan - it is required for accurate 3D layout generation');
+      return;
+    }
+
     setUploading(true);
     
     try {
-      // Step 1: Analyze room photo for dimensions (use first photo)
-      setAnalysisStep('Analyzing room dimensions...');
-      const analyzeFormData = new FormData();
-      analyzeFormData.append('file', files[0]);
+      // Step 1: Analyze floorplan to generate 3D room layout
+      setAnalysisStep('Analyzing floorplan for 3D layout generation...');
+      const floorplanFormData = new FormData();
+      floorplanFormData.append('floorplan', floorplanFile!);
+      floorplanFormData.append('roomPhoto', files[0]); // Include room photo for context
 
-      const analyzeResponse = await fetch('/api/analyze-floorplan', {
+      const floorplanResponse = await fetch('/api/generate-room-from-floorplan', {
         method: 'POST',
-        body: analyzeFormData,
+        body: floorplanFormData,
       });
 
-      let roomDimensions = { length: 15, width: 12, height: 9, unit: 'ft' as const };
-      
-      if (analyzeResponse.ok) {
-        const analyzeData = await analyzeResponse.json();
-        roomDimensions = analyzeData.dimensions || roomDimensions;
+      if (!floorplanResponse.ok) {
+        throw new Error('Failed to analyze floorplan');
       }
 
-      // Step 2: Segment objects in the room photo
-      setAnalysisStep('Detecting furniture and objects...');
+      const floorplanData = await floorplanResponse.json();
+      
+      // 🔍 LOG OPENAI FLOORPLAN ANALYSIS RESULTS
+      console.log('========================================');
+      console.log('🏠 OPENAI GPT-4 VISION FLOORPLAN ANALYSIS RESULTS:');
+      console.log('========================================');
+      console.log('📐 Dimensions:', floorplanData.dimensions);
+      console.log('🔷 Room Shape:', floorplanData.shape);
+      console.log('🚪 Doors:', floorplanData.doors);
+      console.log('🪟 Windows:', floorplanData.windows);
+      console.log('🧭 Cardinal Orientation:', floorplanData.cardinal);
+      console.log('🏷️ Room Type:', floorplanData.roomType);
+      console.log('⚠️ Error (if any):', floorplanData.error);
+      console.log('========================================');
+      console.log('📦 Full Floorplan Data:', JSON.stringify(floorplanData, null, 2));
+      console.log('========================================');
+      
+      setAnalysisStep('Generating 3D room geometry...');
+
+      // Step 2: Detect furniture in room photo (optional, for reference)
+      setAnalysisStep('Detecting furniture in photos...');
       const segmentFormData = new FormData();
       segmentFormData.append('file', files[0]);
-      
-      // Add floorplan if provided for better spatial reasoning
-      if (floorplanFile) {
-        segmentFormData.append('floorplan', floorplanFile);
-        setAnalysisStep('Analyzing floorplan + photo together...');
-      }
 
       const segmentResponse = await fetch('/api/segment-room', {
         method: 'POST',
         body: segmentFormData,
       });
 
+      let detectedObjects = [];
       if (segmentResponse.ok) {
         const segmentData = await segmentResponse.json();
-        
-        // Update room dimensions from segmentation if available
-        if (segmentData.roomDimensions) {
-          roomDimensions = segmentData.roomDimensions;
-        }
-        
-        // Store segmentation result
-        setSegmentationResult({
-          originalImageUrl: segmentData.originalImageUrl,
-          objects: segmentData.objects || [],
-          roomDimensions: segmentData.roomDimensions,
-          wallColor: segmentData.wallColor,
-          floorColor: segmentData.floorColor,
-          lighting: segmentData.lighting,
-        });
-        
-        setAnalysisStep(`Found ${segmentData.objects?.length || 0} objects!`);
+        detectedObjects = segmentData.objects || [];
+        setAnalysisStep(`Found ${detectedObjects.length} furniture items!`);
       }
       
-      // Set room data
+      // Store the complete room layout with floorplan data
+      setSegmentationResult({
+        originalImageUrl: previews[0],
+        objects: detectedObjects,
+        roomDimensions: floorplanData.dimensions,
+        wallColor: floorplanData.wallColor || '#FAF0E6',
+        floorColor: floorplanData.floorColor || '#B8860B',
+        lighting: 'natural',
+        // Store floorplan-specific data
+        roomShape: floorplanData.shape,
+        doors: floorplanData.doors,
+        windows: floorplanData.windows,
+        cardinal: floorplanData.cardinal,
+      });
+      
+      // Set room data with floorplan information
       const roomData: RoomData = {
-        dimensions: roomDimensions,
-        shape: { type: 'rectangle' },
+        dimensions: floorplanData.dimensions,
+        shape: floorplanData.shape,
         photoUrls: previews,
         floorplanImageUrl: floorplanPreview || undefined,
+        doors: floorplanData.doors,
+        windows: floorplanData.windows,
+        cardinal: floorplanData.cardinal,
       };
 
       setRoomData(roomData);
@@ -218,15 +238,15 @@ export function PhotoUpload() {
         </CardContent>
       </Card>
 
-      {/* Optional Floorplan */}
-      <Card className="border-dashed bg-white/5 border-white/10 text-white">
+      {/* Required Floorplan */}
+      <Card className="bg-white/5 border-white/10 text-white">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base text-white">
             <Map className="h-4 w-4" />
-            Floorplan (Optional)
+            Floorplan (Required) <span className="text-red-400 text-xs ml-1">*</span>
           </CardTitle>
           <CardDescription className="text-xs text-white/50">
-            Adding a floorplan significantly improves furniture positioning accuracy
+            Upload your floorplan for accurate 3D room generation with exact dimensions and features
           </CardDescription>
         </CardHeader>
         <CardContent>

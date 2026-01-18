@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Groq from 'groq-sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Groq client
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY || '',
-});
+// Initialize Gemini client
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 export async function POST(request: NextRequest) {
     try {
@@ -44,23 +42,21 @@ export async function POST(request: NextRequest) {
             lighting: 'medium' as const,
         };
 
-        // Use Groq's vision model
+        // Use Gemini's vision model
         try {
-            const chatCompletion = await groq.chat.completions.create({
-                model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-                messages: [
-                    {
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: `data:${contentType};base64,${imageBase64}`,
-                                },
-                            },
-                            {
-                                type: 'text',
-                                text: `Analyze this room image or floorplan. Determine:
+            const model = genAI.getGenerativeModel({ 
+              model: 'gemini-2.0-flash-exp',
+              generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+            });
+            
+            const imagePart = {
+                inlineData: {
+                    data: imageBase64,
+                    mimeType: contentType,
+                },
+            };
+
+            const prompt = `Analyze this room image or floorplan. Determine:
 1. Room type (bedroom, living-room, kitchen, office, dining-room, bathroom)
 2. Estimated dimensions in feet (length, width, height)
 3. List of visible furniture items
@@ -74,17 +70,12 @@ Return a JSON object ONLY with this structure (no other text):
   "furniture": ["sofa", "coffee table", "tv"],
   "style": "modern",
   "colors": ["#FAF0E6", "#8B7355", "#4A90E2"]
-}`,
-                            },
-                        ],
-                    },
-                ],
-                max_tokens: 1024,
-                temperature: 0.3,
-            });
+}`;
 
-            const responseText = chatCompletion.choices[0]?.message?.content || '';
-            console.log('Groq analysis response:', responseText);
+            const geminiResult = await model.generateContent([prompt, imagePart]);
+            const response = await geminiResult.response;
+            const responseText = response.text();
+            console.log('Gemini analysis response:', responseText);
 
             // Parse JSON from response
             const jsonMatch = responseText.match(/\{[\s\S]*\}/);

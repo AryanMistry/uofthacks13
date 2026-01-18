@@ -51,9 +51,10 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
         selectedObjects.includes(obj.id)
       );
 
-      // Get doors and windows from segmentation result
+      // Get doors, windows, and room shape from segmentation result
       const doors = (segmentationResult as any).doors || [];
       const windows = (segmentationResult as any).windows || [];
+      const roomShape = (segmentationResult as any).roomShape;
 
       // Use the smart layout API which positions furniture intelligently
       const response = await fetch('/api/generate-3d-model', {
@@ -69,6 +70,7 @@ export function SegmentationPreview({ onComplete }: SegmentationPreviewProps) {
           },
           doors,
           windows,
+          roomShape, // Pass custom room shape from floorplan
           identityProfile: identityProfile || undefined,
           useImagePositions: true, // Use positions detected from image
         }),

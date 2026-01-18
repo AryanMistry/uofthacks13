@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Groq from 'groq-sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import sharp from 'sharp';
 import { SegmentedObject, SegmentationResult } from '@/lib/types/segmentation';
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || '',
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Furniture defaults with rotation hints
 const FURNITURE_DEFAULTS: Record<string, {
@@ -247,19 +245,19 @@ export async function POST(request: NextRequest) {
       const floorplanContentType = floorplanFile.type;
 
       try {
-        const floorplanAnalysis = await groq.chat.completions.create({
-          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'image_url',
-                  image_url: { url: `data:${floorplanContentType};base64,${floorplanBase64}` },
-                },
-                {
-                  type: 'text',
-                  text: `Analyze this floorplan. Extract room dimensions (GENEROUSLY overestimate), and locate ALL doors and windows.
+        const model = genAI.getGenerativeModel({ 
+          model: 'gemini-2.0-flash-exp',
+          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+        });
+        
+        const imagePart = {
+          inlineData: {
+            data: floorplanBase64,
+            mimeType: floorplanContentType,
+          },
+        };
+
+        const prompt = `Analyze this floorplan. Extract room dimensions (GENEROUSLY overestimate), and locate ALL doors and windows.
 
 Return ONLY valid JSON:
 {
@@ -276,16 +274,11 @@ Return ONLY valid JSON:
   "roomType": "bedroom"
 }
 
-Position is 0-1 along the wall (0=start, 1=end).`,
-                },
-              ],
-            },
-          ],
-          max_tokens: 2048,
-          temperature: 0.1,
-        });
+Position is 0-1 along the wall (0=start, 1=end).`;
 
-        const fpText = floorplanAnalysis.choices[0]?.message?.content || '';
+        const geminiResult = await model.generateContent([prompt, imagePart]);
+        const response = await geminiResult.response;
+        const fpText = response.text();
         const fpMatch = fpText.match(/\{[\s\S]*\}/);
         if (fpMatch) {
           const parsed = JSON.parse(fpMatch[0]);
@@ -342,19 +335,19 @@ Position is 0-1 along the wall (0=start, 1=end).`,
 
     // Analyze room photo
     try {
-      const chatCompletion = await groq.chat.completions.create({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: { url: `data:${contentType};base64,${imageBase64}` },
-              },
-              {
-                type: 'text',
-                text: `Analyze this room image CAREFULLY. Detect ALL furniture, doors, and windows.
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-2.0-flash-exp',
+        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
+      });
+      
+      const imagePart = {
+        inlineData: {
+          data: imageBase64,
+          mimeType: contentType,
+        },
+      };
+
+      const prompt = `Analyze this room image CAREFULLY. Detect ALL furniture, doors, and windows.
 
 For EACH object provide:
 1. "name": Specific type (e.g., "gray fabric sofa", "oak desk", "window with blinds")
@@ -386,17 +379,12 @@ Return ONLY valid JSON:
     "floorColor": "#B8860B",
     "roomType": "living room"
   }
-}`,
-              },
-            ],
-          },
-        ],
-        max_tokens: 4096,
-        temperature: 0.1,
-      });
+}`;
 
-      const responseText = chatCompletion.choices[0]?.message?.content || '';
-      console.log('Groq response:', responseText);
+      const geminiResult = await model.generateContent([prompt, imagePart]);
+      const response = await geminiResult.response;
+      const responseText = response.text();
+      console.log('Gemini response:', responseText);
 
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
