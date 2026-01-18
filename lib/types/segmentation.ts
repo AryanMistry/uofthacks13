@@ -16,7 +16,7 @@ export interface SegmentedObject {
     height: number;
     unit: 'ft' | 'meters';
   };
-  modelUrl?: string; // Generated 3D model URL
+  modelUrl?: string;
   confidence: number;
   // 3D position calculated from image position
   position3D?: {
@@ -25,6 +25,10 @@ export interface SegmentedObject {
     z: number;
     rotation?: number;
   };
+  // Additional styling info from AI
+  detectedColor?: string;
+  material?: string;
+  style?: string;
 }
 
 export interface SegmentationResult {
@@ -36,4 +40,9 @@ export interface SegmentationResult {
     height: number;
     unit: 'ft' | 'meters';
   };
+  // Extended room styling info
+  roomStyle?: string;
+  wallColor?: string;
+  floorColor?: string;
+  lighting?: string;
 }

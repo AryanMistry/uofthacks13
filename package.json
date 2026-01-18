@@ -35,6 +35,7 @@
     "@huggingface/inference": "^2.8.1",
     "groq-sdk": "^0.8.0",
     "replicate": "^0.32.0",
+    "sharp": "^0.33.0",
     "sharp": "^0.33.5",
     "canvas": "^2.11.2",
     "react-dropzone": "^14.2.3"
