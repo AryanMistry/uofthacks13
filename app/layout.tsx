@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SpaceIdentity - AI-Powered Room Redesign",
+  title: "SpaceIdentity - Vultr & AI-Powered Room Redesign",
   description: "Transform your living space to align with your aspirational identity",
 };
 

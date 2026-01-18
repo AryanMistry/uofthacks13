@@ -1,0 +1,46 @@
+# ============================================
+# SpaceIdentity - Docker Compose for Vultr
+# Use this for local testing before deploying
+# ============================================
+
+version: '3.8'
+
+services:
+  spaceidentity:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - GEMINI_API_KEY=${GEMINI_API_KEY}
+        - VULTR_OBJECT_STORAGE_HOSTNAME=${VULTR_OBJECT_STORAGE_HOSTNAME:-}
+        - VULTR_OBJECT_STORAGE_ACCESS_KEY=${VULTR_OBJECT_STORAGE_ACCESS_KEY:-}
+        - VULTR_OBJECT_STORAGE_SECRET_KEY=${VULTR_OBJECT_STORAGE_SECRET_KEY:-}
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - VULTR_OBJECT_STORAGE_HOSTNAME=${VULTR_OBJECT_STORAGE_HOSTNAME:-}
+      - VULTR_OBJECT_STORAGE_ACCESS_KEY=${VULTR_OBJECT_STORAGE_ACCESS_KEY:-}
+      - VULTR_OBJECT_STORAGE_SECRET_KEY=${VULTR_OBJECT_STORAGE_SECRET_KEY:-}
+      - VULTR_DEPLOYMENT=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# For production on Vultr with nginx reverse proxy:
+#  nginx:
+#    image: nginx:alpine
+#    ports:
+#      - "80:80"
+#      - "443:443"
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#      - /etc/letsencrypt:/etc/letsencrypt:ro
+#    depends_on:
+#      - spaceidentity
+#    restart: unless-stopped

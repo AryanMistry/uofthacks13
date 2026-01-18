@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable standalone output for Docker deployment on Vultr
+  output: 'standalone',
   images: {
     domains: ['localhost'],
     remotePatterns: [
@@ -15,6 +17,10 @@ const nextConfig = {
       'bufferutil': 'commonjs bufferutil',
     });
     return config;
+  },
+  // Environment variables available to the browser
+  env: {
+    VULTR_DEPLOYMENT: process.env.VULTR_DEPLOYMENT || 'false',
   },
 }
 

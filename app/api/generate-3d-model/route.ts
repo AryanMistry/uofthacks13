@@ -30,7 +30,7 @@ const PLACEMENT_RULES: Record<string, {
   awayFrom?: string[];
   minSpacingFeet: number;
   zOffset?: number;
-  faceDirection?: 'inward' | 'outward' | 'forward' | 'toward-window' | 'away-window';
+  faceDirection?: 'inward' | 'outward' | 'forward' | 'toward-window' | 'away-window' | 'toward-related';
   stackable?: boolean;
 }> = {
   'sofa': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 1.5, zOffset: 0.5, faceDirection: 'inward' },

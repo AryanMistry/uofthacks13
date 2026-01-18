@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "docker:build": "docker build -t spaceidentity .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env spaceidentity",
+    "vultr:deploy": "chmod +x vultr-deploy.sh && sudo ./vultr-deploy.sh"
   },
   "dependencies": {
     "next": "^15.0.0",
@@ -35,10 +38,11 @@
     "@huggingface/inference": "^2.8.1",
     "groq-sdk": "^0.8.0",
     "replicate": "^0.32.0",
-    "sharp": "^0.33.0",
     "sharp": "^0.33.5",
     "canvas": "^2.11.2",
-    "react-dropzone": "^14.2.3"
+    "react-dropzone": "^14.2.3",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0"
   },
   "devDependencies": {
     "eslint": "^8.57.1",
