@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Slider } from '@/components/ui/slider';
 import { RoomData } from '@/lib/types/room';
 import { Product } from '@/lib/types/product';
 import { RoomCanvas } from '@/components/room-viewer/RoomCanvas';
@@ -13,9 +12,7 @@ interface BeforeAfterProps {
 }
 
 export function BeforeAfter({ roomData, furniture, onFurnitureClick }: BeforeAfterProps) {
-  // Start at 75 so we show the "After" (furnished) view by default
-  const [sliderValue, setSliderValue] = useState([75]);
-  const showBefore = sliderValue[0] < 50;
+  const [showBefore, setShowBefore] = useState(false);
   
   console.log('BeforeAfter - furniture count:', furniture?.length, 'showBefore:', showBefore);
 
@@ -27,31 +24,47 @@ export function BeforeAfter({ roomData, furniture, onFurnitureClick }: BeforeAft
           furniture={furniture}
           showBefore={showBefore}
           onFurnitureClick={onFurnitureClick}
+          editMode={!showBefore}
         />
       </div>
       
-      {/* Slider overlay */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-64 z-10">
-        <div className="bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg">
-          <div className="flex justify-between text-xs text-gray-600 mb-2">
-            <span className="font-medium">Before</span>
-            <span className="font-medium">After</span>
-          </div>
-          <Slider
-            value={sliderValue}
-            onValueChange={setSliderValue}
-            min={0}
-            max={100}
-            step={1}
-            className="w-full"
-          />
+      {/* Toggle overlay */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
+        <div className="bg-white/95 backdrop-blur-sm rounded-full p-1 shadow-lg flex items-center gap-1">
+          <button
+            onClick={() => setShowBefore(true)}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+              showBefore
+                ? 'bg-gray-900 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Before
+          </button>
+          <button
+            onClick={() => setShowBefore(false)}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+              !showBefore
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            After ✨
+          </button>
         </div>
       </div>
 
       {/* Labels */}
-      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded text-sm font-medium">
-        {showBefore ? 'Original Room' : 'Redesigned Room'}
+      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm">
+        {showBefore ? '🏠 Original Room' : '✨ Redesigned Room'}
       </div>
+
+      {/* Edit mode hint */}
+      {!showBefore && (
+        <div className="absolute top-4 right-4 bg-indigo-600/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs font-medium shadow-sm">
+          Click furniture to edit
+        </div>
+      )}
     </div>
   );
 }

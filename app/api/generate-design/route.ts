@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RoomData } from '@/lib/types/room';
-import { IdentityProfile } from '@/lib/types/identity';
+import { IdentityProfile, getDesignParameters } from '@/lib/types/identity';
 import { DesignResult, DesignLayout } from '@/lib/types/design';
 import { Product } from '@/lib/types/product';
 
@@ -264,6 +264,10 @@ export async function POST(request: NextRequest) {
     const roomWidth = dimensions.width;
     const roomHeight = dimensions.height;
 
+    // Get design parameters from identity profile
+    const designParams = getDesignParameters(identityProfile);
+    console.log('Design parameters from quiz:', designParams);
+
     // Determine room type from various sources
     let roomType = 'default';
     if (roomData.shape && 'roomType' in roomData.shape) {
@@ -271,7 +275,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Select furniture based on room type
-    const furnitureIds = roomFurniture[roomType] || roomFurniture['default'];
+    let furnitureIds = roomFurniture[roomType] || roomFurniture['default'];
+    
+    // Adjust furniture count based on chaos level
+    if (designParams.furnitureCount === 'minimal') {
+      // Keep only essential items (first 3-4 items)
+      furnitureIds = furnitureIds.slice(0, 4);
+    } else if (designParams.furnitureCount === 'dense') {
+      // Add extra decorative items
+      furnitureIds = [...furnitureIds, 'plant-1', 'chair-1'];
+    }
+    
+    // Add extra seating for hosts/extroverts
+    if (designParams.seatingCapacity === 'social') {
+      if (!furnitureIds.includes('chair-1')) furnitureIds.push('chair-1');
+    }
+
     const selectedProducts = mockProducts.filter((p) => furnitureIds.includes(p.id));
 
     // Filter by budget if specified
@@ -299,17 +318,54 @@ export async function POST(request: NextRequest) {
     // Separate by category
     const furniture = layoutProducts.filter((p) => p.category === 'furniture' || p.category === 'storage');
     const lighting = layoutProducts.filter((p) => p.category === 'lighting');
-    const decorations = layoutProducts.filter((p) => p.category === 'decoration' || p.category === 'textile');
+    let decorations = layoutProducts.filter((p) => p.category === 'decoration' || p.category === 'textile');
+    
+    // Adjust decoration count based on chaos level
+    if (designParams.decorationCount === 'minimal') {
+      decorations = decorations.slice(0, 1);
+    } else if (designParams.decorationCount === 'dense') {
+      // Would add more decorations in a real implementation
+    }
 
-    // Generate color scheme based on identity
-    const colorPrefs = identityProfile.colorPreferences || [];
+    // Generate color scheme based on identity profile and new parameters
+    const colorPalette = designParams.colorPalette;
+    const lightingTemp = designParams.lightingTemp;
+    
+    // Wall colors based on preferences
+    let wallColor = '#FAF0E6'; // Default linen
+    if (colorPalette === 'warm') {
+      wallColor = lightingTemp === 'warm' ? '#FFF8E7' : '#FAEBD7'; // Warm cream/antique white
+    } else if (colorPalette === 'cool') {
+      wallColor = lightingTemp === 'cool' ? '#F0F8FF' : '#F5F5FA'; // Alice blue/lavender white
+    } else if (colorPalette === 'bold') {
+      wallColor = '#F5F0E8'; // Warm neutral to let bold accents pop
+    }
+    
+    // Floor color based on material preference
+    let floorColor = '#B8860B'; // Default wood
+    if (designParams.primaryMaterial === 'metal' || designParams.materialStyle === 'modern') {
+      floorColor = '#A0A0A0'; // Concrete gray
+    } else if (designParams.materialStyle === 'vintage') {
+      floorColor = '#8B4513'; // Saddle brown (darker wood)
+    }
+    
+    // Accent color based on palette
+    let accentColor = '#4A90E2'; // Default blue
+    if (colorPalette === 'warm') {
+      accentColor = '#E07B39'; // Burnt orange
+    } else if (colorPalette === 'cool') {
+      accentColor = '#4A90E2'; // Blue
+    } else if (colorPalette === 'bold') {
+      accentColor = '#9B59B6'; // Purple
+    }
+    
     const colorScheme = {
-      walls: colorPrefs.includes('neutral') ? '#FAF0E6' : '#F5F5F5',
-      floor: '#B8860B',
+      walls: wallColor,
+      floor: floorColor,
       ceiling: '#FFFFFF',
-      accent: colorPrefs.includes('blue') ? '#4A90E2' : 
-              colorPrefs.includes('green') ? '#228B22' :
-              colorPrefs.includes('warm') ? '#CD853F' : '#4A90E2',
+      accent: accentColor,
+      lightingTemp: lightingTemp,
+      hasRGBLighting: designParams.hasRGBLighting,
     };
 
     const designLayout: DesignLayout = {

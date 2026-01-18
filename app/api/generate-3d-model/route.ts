@@ -1,48 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SegmentedObject } from '@/lib/types/segmentation';
 
-// Smart furniture placement rules
+// Y-axis stacking rules: what goes on top of what
+const STACKING_RULES: Record<string, { stackOn: string[]; heightOffset: number }> = {
+  'tv': { stackOn: ['tv stand', 'console', 'dresser', 'media console'], heightOffset: 0 },
+  'television': { stackOn: ['tv stand', 'console', 'dresser', 'media console'], heightOffset: 0 },
+  'table lamp': { stackOn: ['nightstand', 'side table', 'end table', 'desk', 'dresser'], heightOffset: 0 },
+  'lamp': { stackOn: ['nightstand', 'side table', 'end table', 'desk'], heightOffset: 0 },
+  'vase': { stackOn: ['table', 'console', 'shelf', 'dresser'], heightOffset: 0 },
+  'clock': { stackOn: ['nightstand', 'desk', 'shelf'], heightOffset: 0 },
+  'books': { stackOn: ['table', 'desk', 'shelf'], heightOffset: 0 },
+  'decoration': { stackOn: ['table', 'shelf', 'console', 'dresser'], heightOffset: 0 },
+};
+
+// Smart furniture placement rules with rotation info
 const PLACEMENT_RULES: Record<string, {
-  preferredPosition: 'wall' | 'center' | 'corner' | 'beside' | 'floating';
+  preferredPosition: 'wall' | 'center' | 'corner' | 'beside' | 'floating' | 'on-top';
   wallPreference?: 'back' | 'left' | 'right' | 'front' | 'any';
   nearTo?: string[];
   awayFrom?: string[];
   minSpacingFeet: number;
-  zOffset?: number; // How far from wall (for wall items)
+  zOffset?: number;
+  faceDirection?: 'inward' | 'outward' | 'forward';
+  stackable?: boolean; // Can this item be placed on top of others?
 }> = {
-  'sofa': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 2, zOffset: 0.5 },
-  'couch': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 2, zOffset: 0.5 },
-  'sectional': { preferredPosition: 'corner', minSpacingFeet: 2 },
-  'loveseat': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 1.5, zOffset: 0.5 },
-  'coffee table': { preferredPosition: 'center', nearTo: ['sofa', 'couch', 'sectional'], minSpacingFeet: 2 },
-  'dining table': { preferredPosition: 'center', minSpacingFeet: 3 },
-  'bed': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 1.5, zOffset: 0.3 },
-  'nightstand': { preferredPosition: 'beside', nearTo: ['bed'], minSpacingFeet: 0.3 },
-  'desk': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 2, zOffset: 0.5 },
-  'chair': { preferredPosition: 'floating', nearTo: ['desk', 'dining table'], minSpacingFeet: 0.5 },
-  'dining chair': { preferredPosition: 'floating', nearTo: ['dining table'], minSpacingFeet: 0.3 },
-  'office chair': { preferredPosition: 'floating', nearTo: ['desk'], minSpacingFeet: 0.5 },
-  'armchair': { preferredPosition: 'corner', minSpacingFeet: 1.5 },
-  'tv': { preferredPosition: 'wall', wallPreference: 'front', awayFrom: ['sofa', 'couch'], minSpacingFeet: 5, zOffset: 0.2 },
-  'tv stand': { preferredPosition: 'wall', wallPreference: 'front', minSpacingFeet: 2, zOffset: 0.3 },
-  'bookshelf': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 0.3, zOffset: 0.2 },
-  'shelf': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 0.3, zOffset: 0.2 },
-  'wardrobe': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 0.3, zOffset: 0.2 },
-  'closet': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 0.3, zOffset: 0.2 },
-  'dresser': { preferredPosition: 'wall', wallPreference: 'right', minSpacingFeet: 0.5, zOffset: 0.3 },
-  'cabinet': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 0.3, zOffset: 0.2 },
-  'lamp': { preferredPosition: 'corner', minSpacingFeet: 0.5 },
-  'floor lamp': { preferredPosition: 'corner', minSpacingFeet: 0.5 },
-  'table lamp': { preferredPosition: 'beside', nearTo: ['nightstand', 'side table', 'desk'], minSpacingFeet: 0.2 },
-  'plant': { preferredPosition: 'corner', minSpacingFeet: 0.5 },
-  'rug': { preferredPosition: 'center', minSpacingFeet: 0 },
-  'carpet': { preferredPosition: 'center', minSpacingFeet: 0 },
-  'mirror': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 0.2, zOffset: 0.1 },
-  'ottoman': { preferredPosition: 'center', nearTo: ['sofa', 'armchair'], minSpacingFeet: 1 },
-  'bench': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 1, zOffset: 0.3 },
-  'console': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 0.5, zOffset: 0.2 },
-  'side table': { preferredPosition: 'beside', nearTo: ['sofa', 'armchair', 'bed'], minSpacingFeet: 0.3 },
-  'end table': { preferredPosition: 'beside', nearTo: ['sofa', 'armchair'], minSpacingFeet: 0.3 },
+  'sofa': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 2, zOffset: 0.5, faceDirection: 'inward' },
+  'couch': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 2, zOffset: 0.5, faceDirection: 'inward' },
+  'sectional': { preferredPosition: 'corner', minSpacingFeet: 2, faceDirection: 'inward' },
+  'loveseat': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 1.5, zOffset: 0.5, faceDirection: 'inward' },
+  'coffee table': { preferredPosition: 'center', nearTo: ['sofa', 'couch', 'sectional'], minSpacingFeet: 2, faceDirection: 'forward' },
+  'dining table': { preferredPosition: 'center', minSpacingFeet: 3, faceDirection: 'forward' },
+  'bed': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 1.5, zOffset: 0.3, faceDirection: 'inward' },
+  'nightstand': { preferredPosition: 'beside', nearTo: ['bed'], minSpacingFeet: 0.3, faceDirection: 'forward' },
+  'desk': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 2, zOffset: 0.5, faceDirection: 'inward' },
+  'chair': { preferredPosition: 'floating', nearTo: ['desk', 'dining table'], minSpacingFeet: 0.5, faceDirection: 'inward' },
+  'dining chair': { preferredPosition: 'floating', nearTo: ['dining table'], minSpacingFeet: 0.3, faceDirection: 'inward' },
+  'office chair': { preferredPosition: 'floating', nearTo: ['desk'], minSpacingFeet: 0.5, faceDirection: 'outward' },
+  'armchair': { preferredPosition: 'corner', minSpacingFeet: 1.5, faceDirection: 'inward' },
+  'tv': { preferredPosition: 'on-top', nearTo: ['tv stand', 'console', 'media console', 'dresser'], minSpacingFeet: 0, zOffset: 0, faceDirection: 'inward', stackable: true },
+  'television': { preferredPosition: 'on-top', nearTo: ['tv stand', 'console', 'media console', 'dresser'], minSpacingFeet: 0, zOffset: 0, faceDirection: 'inward', stackable: true },
+  'tv stand': { preferredPosition: 'wall', wallPreference: 'front', minSpacingFeet: 2, zOffset: 0.3, faceDirection: 'inward' },
+  'media console': { preferredPosition: 'wall', wallPreference: 'front', minSpacingFeet: 2, zOffset: 0.3, faceDirection: 'inward' },
+  'bookshelf': { preferredPosition: 'wall', wallPreference: 'right', minSpacingFeet: 0.3, zOffset: 0.2, faceDirection: 'inward' },
+  'shelf': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 0.3, zOffset: 0.2, faceDirection: 'inward' },
+  'wardrobe': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 0.3, zOffset: 0.2, faceDirection: 'inward' },
+  'closet': { preferredPosition: 'wall', wallPreference: 'left', minSpacingFeet: 0.3, zOffset: 0.2, faceDirection: 'inward' },
+  'dresser': { preferredPosition: 'wall', wallPreference: 'right', minSpacingFeet: 0.5, zOffset: 0.3, faceDirection: 'inward' },
+  'cabinet': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 0.3, zOffset: 0.2, faceDirection: 'inward' },
+  'lamp': { preferredPosition: 'corner', minSpacingFeet: 0.5, faceDirection: 'forward' },
+  'floor lamp': { preferredPosition: 'corner', minSpacingFeet: 0.5, faceDirection: 'forward' },
+  'table lamp': { preferredPosition: 'on-top', nearTo: ['nightstand', 'side table', 'desk', 'dresser'], minSpacingFeet: 0, faceDirection: 'forward', stackable: true },
+  'plant': { preferredPosition: 'corner', minSpacingFeet: 0.5, faceDirection: 'forward' },
+  'rug': { preferredPosition: 'center', minSpacingFeet: 0, faceDirection: 'forward' },
+  'carpet': { preferredPosition: 'center', minSpacingFeet: 0, faceDirection: 'forward' },
+  'mirror': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 0.2, zOffset: 0.1, faceDirection: 'inward' },
+  'ottoman': { preferredPosition: 'center', nearTo: ['sofa', 'armchair'], minSpacingFeet: 1, faceDirection: 'forward' },
+  'bench': { preferredPosition: 'wall', wallPreference: 'any', minSpacingFeet: 1, zOffset: 0.3, faceDirection: 'inward' },
+  'console': { preferredPosition: 'wall', wallPreference: 'back', minSpacingFeet: 0.5, zOffset: 0.2, faceDirection: 'inward' },
+  'side table': { preferredPosition: 'beside', nearTo: ['sofa', 'armchair', 'bed'], minSpacingFeet: 0.3, faceDirection: 'forward' },
+  'end table': { preferredPosition: 'beside', nearTo: ['sofa', 'armchair'], minSpacingFeet: 0.3, faceDirection: 'forward' },
+  'vase': { preferredPosition: 'on-top', nearTo: ['table', 'console', 'dresser'], minSpacingFeet: 0, faceDirection: 'forward', stackable: true },
+  'clock': { preferredPosition: 'on-top', nearTo: ['nightstand', 'desk'], minSpacingFeet: 0, faceDirection: 'forward', stackable: true },
+};
+
+// Wall rotations: rotation needed to face INTO the room from each wall
+const WALL_ROTATIONS: Record<string, number> = {
+  'back': 0,           // Against back wall (-Z), face forward (+Z)
+  'front': Math.PI,    // Against front wall (+Z), face backward (-Z)
+  'left': Math.PI / 2, // Against left wall (-X), face right (+X)
+  'right': -Math.PI / 2, // Against right wall (+X), face left (-X)
 };
 
 function getPlacementRule(label: string) {
@@ -50,18 +76,38 @@ function getPlacementRule(label: string) {
   for (const [key, rule] of Object.entries(PLACEMENT_RULES)) {
     if (lowerLabel.includes(key)) return rule;
   }
-  return { preferredPosition: 'floating' as const, minSpacingFeet: 1.5 };
+  return { preferredPosition: 'floating' as const, minSpacingFeet: 1.5, faceDirection: 'forward' as const };
 }
 
 interface PlacedItem {
+  id: string;
   x: number;
+  y: number; // Y position (height from floor)
   z: number;
   length: number;
   width: number;
+  height: number;
   label: string;
+  rotation: number;
 }
 
-// Check if position overlaps with any existing furniture
+// Find an item that this object can stack on top of
+function findStackTarget(label: string, placed: PlacedItem[]): PlacedItem | null {
+  const lowerLabel = label.toLowerCase();
+  
+  // Check stacking rules
+  for (const [itemType, rules] of Object.entries(STACKING_RULES)) {
+    if (lowerLabel.includes(itemType)) {
+      for (const targetType of rules.stackOn) {
+        const target = placed.find(p => p.label.includes(targetType));
+        if (target) return target;
+      }
+    }
+  }
+  
+  return null;
+}
+
 function checkOverlap(
   x: number, z: number,
   length: number, width: number,
@@ -75,27 +121,23 @@ function checkOverlap(
     const minDz = (width / 2) + (item.width / 2) + minSpacing;
     
     if (dx < minDx && dz < minDz) {
-      return true; // Overlap detected
+      return true;
     }
   }
   return false;
 }
 
-// Find a valid position that doesn't overlap
 function findNonOverlappingPosition(
   targetX: number, targetZ: number,
   length: number, width: number,
   placed: PlacedItem[],
   minSpacing: number,
-  roomL: number, roomW: number,
-  maxAttempts: number = 20
+  roomL: number, roomW: number
 ): { x: number; z: number } {
-  // Try the target position first
   if (!checkOverlap(targetX, targetZ, length, width, placed, minSpacing)) {
     return { x: targetX, z: targetZ };
   }
 
-  // Try spiral outward from target position
   const spiralOffsets = [
     [2, 0], [-2, 0], [0, 2], [0, -2],
     [2, 2], [-2, 2], [2, -2], [-2, -2],
@@ -108,7 +150,6 @@ function findNonOverlappingPosition(
     const newX = targetX + dx;
     const newZ = targetZ + dz;
     
-    // Check bounds
     const maxX = (roomL / 2) - (length / 2) - 0.5;
     const maxZ = (roomW / 2) - (width / 2) - 0.5;
     
@@ -119,20 +160,23 @@ function findNonOverlappingPosition(
     }
   }
 
-  // Last resort: find any valid position
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const maxX = (roomL / 2) - (length / 2) - 1;
-    const maxZ = (roomW / 2) - (width / 2) - 1;
-    const randX = (Math.random() - 0.5) * 2 * maxX;
-    const randZ = (Math.random() - 0.5) * 2 * maxZ;
-    
-    if (!checkOverlap(randX, randZ, length, width, placed, minSpacing)) {
-      return { x: randX, z: randZ };
-    }
-  }
-
-  // Absolute fallback - place it anyway but offset from center
   return { x: targetX + (Math.random() - 0.5) * 4, z: targetZ + (Math.random() - 0.5) * 4 };
+}
+
+// Calculate rotation based on wall placement
+function getRotationForWall(wall: 'back' | 'left' | 'right' | 'front' | 'any', faceDirection: string): number {
+  if (wall === 'any') {
+    return 0; // Default forward
+  }
+  return WALL_ROTATIONS[wall] || 0;
+}
+
+// Calculate rotation for corner placement (face toward center)
+function getCornerRotation(x: number, z: number): number {
+  // Calculate angle to face room center
+  const angleToCenter = Math.atan2(-z, -x);
+  // Adjust to make furniture face the center at an angle
+  return angleToCenter + Math.PI;
 }
 
 interface SmartLayoutRequest {
@@ -158,26 +202,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No objects provided' }, { status: 400 });
     }
 
-    // Use room dimensions with safety margin
     const roomL = roomDimensions?.length || 20;
     const roomW = roomDimensions?.width || 16;
-    const wallPadding = 1.0; // Minimum distance from wall
+    const wallPadding = 1.0;
 
     console.log('Smart layout for room:', roomL, 'x', roomW, 'with', objects.length, 'objects');
 
-    // Track placed furniture
     const placedPositions: PlacedItem[] = [];
 
-    // Sort objects by priority: large wall items first, then center, then small floating
+    // Sort by priority - on-top items come LAST (after their base items are placed)
     const priorityOrder: Record<string, number> = { 
-      wall: 0, 
-      corner: 1, 
-      center: 2, 
-      beside: 3, 
-      floating: 4 
+      wall: 0, corner: 1, center: 2, beside: 3, floating: 4, 'on-top': 5
     };
     
-    // Also prioritize by size (larger first)
     const sortedObjects = [...objects].sort((a, b) => {
       const ruleA = getPlacementRule(a.label);
       const ruleB = getPlacementRule(b.label);
@@ -185,7 +222,6 @@ export async function POST(request: NextRequest) {
       
       if (priorityDiff !== 0) return priorityDiff;
       
-      // Same priority - sort by size (larger first)
       const sizeA = (a.estimatedDimensions?.length || 2) * (a.estimatedDimensions?.width || 2);
       const sizeB = (b.estimatedDimensions?.length || 2) * (b.estimatedDimensions?.width || 2);
       return sizeB - sizeA;
@@ -203,8 +239,8 @@ export async function POST(request: NextRequest) {
 
       let targetX = 0;
       let targetZ = 0;
+      let rotation = 0;
 
-      // Calculate wall positions (object center positions when against wall)
       const wallPos = {
         back: { x: 0, z: -halfRoomW + halfObjW + wallPadding + zOff },
         front: { x: 0, z: halfRoomW - halfObjW - wallPadding - zOff },
@@ -212,44 +248,36 @@ export async function POST(request: NextRequest) {
         right: { x: halfRoomL - halfObjL - wallPadding - zOff, z: 0 },
       };
 
-      // Corner positions
       const corners = [
-        { x: -halfRoomL + halfObjL + wallPadding, z: -halfRoomW + halfObjW + wallPadding },
-        { x: halfRoomL - halfObjL - wallPadding, z: -halfRoomW + halfObjW + wallPadding },
-        { x: -halfRoomL + halfObjL + wallPadding, z: halfRoomW - halfObjW - wallPadding },
-        { x: halfRoomL - halfObjL - wallPadding, z: halfRoomW - halfObjW - wallPadding },
+        { x: -halfRoomL + halfObjL + wallPadding + 1, z: -halfRoomW + halfObjW + wallPadding + 1 },
+        { x: halfRoomL - halfObjL - wallPadding - 1, z: -halfRoomW + halfObjW + wallPadding + 1 },
+        { x: -halfRoomL + halfObjL + wallPadding + 1, z: halfRoomW - halfObjW - wallPadding - 1 },
+        { x: halfRoomL - halfObjL - wallPadding - 1, z: halfRoomW - halfObjW - wallPadding - 1 },
       ];
+
+      let chosenWall: 'back' | 'left' | 'right' | 'front' = 'back';
 
       switch (rule.preferredPosition) {
         case 'wall': {
           const wall = rule.wallPreference || 'back';
           
           if (wall === 'any') {
-            // Try each wall until we find one without overlap
             const walls: ('back' | 'left' | 'right' | 'front')[] = ['back', 'left', 'right', 'front'];
-            let found = false;
-            
             for (const w of walls) {
               const pos = wallPos[w];
               if (!checkOverlap(pos.x, pos.z, dims.length, dims.width, placedPositions, rule.minSpacingFeet)) {
                 targetX = pos.x;
                 targetZ = pos.z;
-                found = true;
+                chosenWall = w;
                 break;
               }
-            }
-            
-            if (!found) {
-              // All walls occupied - spread along back wall
-              targetX = (placedPositions.length % 3 - 1) * (roomL / 4);
-              targetZ = wallPos.back.z;
             }
           } else {
             const pos = wallPos[wall];
             targetX = pos.x;
             targetZ = pos.z;
+            chosenWall = wall;
             
-            // Spread along the wall if needed
             const wallItems = placedPositions.filter(p => {
               if (wall === 'back' || wall === 'front') {
                 return Math.abs(p.z - pos.z) < 2;
@@ -258,8 +286,7 @@ export async function POST(request: NextRequest) {
             });
             
             if (wallItems.length > 0) {
-              // Offset along the wall
-              const offset = (wallItems.length * 2) * (wallItems.length % 2 === 0 ? 1 : -1);
+              const offset = (wallItems.length * 3) * (wallItems.length % 2 === 0 ? 1 : -1);
               if (wall === 'back' || wall === 'front') {
                 targetX = offset;
               } else {
@@ -267,33 +294,33 @@ export async function POST(request: NextRequest) {
               }
             }
           }
+          
+          // Set rotation to face into room from the wall
+          rotation = getRotationForWall(chosenWall, rule.faceDirection || 'inward');
           break;
         }
 
         case 'center': {
-          // Place in center area
           if (obj.label.toLowerCase().includes('rug') || obj.label.toLowerCase().includes('carpet')) {
-            // Rugs go exactly in center
             targetX = 0;
             targetZ = 0;
+            rotation = 0;
           } else if (obj.label.toLowerCase().includes('coffee')) {
-            // Coffee table goes in front of sofa
             const sofa = placedPositions.find(p => 
               p.label.includes('sofa') || p.label.includes('couch') || p.label.includes('sectional')
             );
             if (sofa) {
               targetX = sofa.x;
-              targetZ = sofa.z + sofa.width / 2 + dims.width / 2 + 2; // 2 feet in front
+              targetZ = sofa.z + sofa.width / 2 + dims.width / 2 + 2;
+              rotation = sofa.rotation; // Match sofa orientation
             } else {
               targetX = 0;
               targetZ = 0;
             }
           } else if (obj.label.toLowerCase().includes('dining')) {
-            // Dining table slightly toward back
             targetX = 0;
             targetZ = -halfRoomW / 3;
           } else {
-            // Generic center placement
             targetX = 0;
             targetZ = 0;
           }
@@ -301,48 +328,45 @@ export async function POST(request: NextRequest) {
         }
 
         case 'corner': {
-          // Find an available corner
-          let placed = false;
-          for (const corner of corners) {
+          let cornerIndex = 0;
+          for (let i = 0; i < corners.length; i++) {
+            const corner = corners[i];
             if (!checkOverlap(corner.x, corner.z, dims.length, dims.width, placedPositions, rule.minSpacingFeet)) {
               targetX = corner.x;
               targetZ = corner.z;
-              placed = true;
+              cornerIndex = i;
               break;
             }
           }
-          if (!placed) {
-            // Fallback to first corner
-            targetX = corners[0].x;
-            targetZ = corners[0].z;
-          }
+          
+          // For corners, face toward room center at 45 degree angle
+          rotation = getCornerRotation(targetX, targetZ);
           break;
         }
 
         case 'beside': {
-          // Place beside related furniture
           let placed = false;
           
           if (rule.nearTo) {
             for (const nearLabel of rule.nearTo) {
               const nearItem = placedPositions.find(p => p.label.includes(nearLabel));
               if (nearItem) {
-                // Try right side first
                 let sideX = nearItem.x + nearItem.length / 2 + dims.length / 2 + 0.5;
                 let sideZ = nearItem.z;
                 
                 if (!checkOverlap(sideX, sideZ, dims.length, dims.width, placedPositions, rule.minSpacingFeet)) {
                   targetX = sideX;
                   targetZ = sideZ;
+                  rotation = nearItem.rotation; // Match parent orientation
                   placed = true;
                   break;
                 }
                 
-                // Try left side
                 sideX = nearItem.x - nearItem.length / 2 - dims.length / 2 - 0.5;
                 if (!checkOverlap(sideX, sideZ, dims.length, dims.width, placedPositions, rule.minSpacingFeet)) {
                   targetX = sideX;
                   targetZ = sideZ;
+                  rotation = nearItem.rotation;
                   placed = true;
                   break;
                 }
@@ -351,28 +375,59 @@ export async function POST(request: NextRequest) {
           }
           
           if (!placed) {
-            // Default beside position
             targetX = halfRoomL - halfObjL - wallPadding;
             targetZ = 0;
           }
           break;
         }
 
-        case 'floating':
-        default: {
-          // Floating items near related furniture
-          if (rule.nearTo) {
+        case 'on-top': {
+          // Find a base item to stack on top of
+          const stackTarget = findStackTarget(obj.label, placedPositions);
+          
+          if (stackTarget) {
+            // Place on top of the target item
+            targetX = stackTarget.x;
+            targetZ = stackTarget.z;
+            rotation = stackTarget.rotation; // Match base item rotation
+            
+            console.log(`Stacking ${obj.label} on top of ${stackTarget.label} at y=${stackTarget.y + stackTarget.height}`);
+          } else if (rule.nearTo) {
+            // Fallback: find any of the nearTo items
             for (const nearLabel of rule.nearTo) {
               const nearItem = placedPositions.find(p => p.label.includes(nearLabel));
               if (nearItem) {
-                // Place in front of the related item (for chairs near desks/tables)
                 targetX = nearItem.x;
-                targetZ = nearItem.z + nearItem.width / 2 + dims.width / 2 + 1.5;
+                targetZ = nearItem.z;
+                rotation = nearItem.rotation;
                 break;
               }
             }
           } else {
-            // Distribute in available space
+            // Last resort: wall placement
+            targetX = 0;
+            targetZ = halfRoomW - halfObjW - wallPadding;
+            rotation = Math.PI;
+          }
+          break;
+        }
+
+        case 'floating':
+        default: {
+          if (rule.nearTo) {
+            for (const nearLabel of rule.nearTo) {
+              const nearItem = placedPositions.find(p => p.label.includes(nearLabel));
+              if (nearItem) {
+                // Place in front of related item (for chairs near desks/tables)
+                targetX = nearItem.x;
+                targetZ = nearItem.z + nearItem.width / 2 + dims.width / 2 + 1.5;
+                
+                // Face toward the related item (opposite direction)
+                rotation = nearItem.rotation + Math.PI;
+                break;
+              }
+            }
+          } else {
             const gridSize = Math.ceil(Math.sqrt(sortedObjects.length));
             const idx = placedPositions.length;
             const gridX = (idx % gridSize) - gridSize / 2;
@@ -384,13 +439,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Ensure bounds and find non-overlapping position
+      // Bounds check
       const maxX = halfRoomL - halfObjL - wallPadding;
       const maxZ = halfRoomW - halfObjW - wallPadding;
       targetX = Math.max(-maxX, Math.min(maxX, targetX));
       targetZ = Math.max(-maxZ, Math.min(maxZ, targetZ));
 
-      // Find a non-overlapping position
+      // Find non-overlapping position
       const finalPos = findNonOverlappingPosition(
         targetX, targetZ,
         dims.length, dims.width,
@@ -399,11 +454,10 @@ export async function POST(request: NextRequest) {
         roomL, roomW
       );
 
-      // Clamp final position to room bounds
       finalPos.x = Math.max(-maxX, Math.min(maxX, finalPos.x));
       finalPos.z = Math.max(-maxZ, Math.min(maxZ, finalPos.z));
 
-      // Avoid doors if floorplan data provided
+      // Avoid doors
       if (floorplanData?.doors) {
         for (const door of floorplanData.doors) {
           const doorMinX = door.x - door.width / 2 - 2;
@@ -413,30 +467,42 @@ export async function POST(request: NextRequest) {
           
           if (finalPos.x > doorMinX && finalPos.x < doorMaxX &&
               finalPos.z > doorMinZ && finalPos.z < doorMaxZ) {
-            // Move away from door
             finalPos.x += 4;
           }
         }
       }
 
-      // Record this position
+      // Calculate Y position (stacking)
+      let yPosition = 0;
+      if (rule.preferredPosition === 'on-top' || rule.stackable) {
+        const stackTarget = findStackTarget(obj.label, placedPositions);
+        if (stackTarget) {
+          yPosition = stackTarget.y + stackTarget.height;
+        }
+      }
+
+      // Record position
       placedPositions.push({
+        id: obj.id,
         x: finalPos.x,
+        y: yPosition,
         z: finalPos.z,
         length: dims.length,
         width: dims.width,
+        height: dims.height || 2,
         label: obj.label.toLowerCase(),
+        rotation: rotation,
       });
 
-      console.log(`Placed ${obj.label} at (${finalPos.x.toFixed(1)}, ${finalPos.z.toFixed(1)})`);
+      console.log(`Placed ${obj.label} at (${finalPos.x.toFixed(1)}, ${yPosition.toFixed(1)}, ${finalPos.z.toFixed(1)}) rot: ${(rotation * 180 / Math.PI).toFixed(0)}°`);
 
       return {
         ...obj,
         position3D: {
           x: finalPos.x,
-          y: 0,
+          y: yPosition,
           z: finalPos.z,
-          rotation: 0,
+          rotation: rotation,
         },
         generationType: 'procedural' as const,
       };
@@ -456,7 +522,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Batch endpoint for backwards compatibility
 export async function PUT(request: NextRequest) {
   return POST(request);
 }

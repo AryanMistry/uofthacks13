@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Product } from '@/lib/types/product';
 import { RoomData } from '@/lib/types/room';
 import { useSegmentationStore } from '@/lib/store/segmentation-store';
+import { createDetailedProceduralFurniture } from '@/lib/3d/procedural-furniture';
 
 interface RoomCanvasProps {
   roomData: RoomData;
@@ -16,8 +17,8 @@ interface RoomCanvasProps {
   editMode?: boolean; // Enable furniture dragging
 }
 
-// Create procedural furniture models (fallback when GLB not available)
-function createProceduralFurniture(
+// Legacy fallback - now using detailed version from lib/3d/procedural-furniture.ts
+function createProceduralFurnitureLegacy(
   label: string,
   category: string,
   dimensions: { length: number; width: number; height: number },
@@ -644,6 +645,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
         }
         const outline = createSelectionOutline(furniture);
         outline.position.copy(furniture.position);
+        outline.rotation.copy(furniture.rotation); // Preserve rotation
         scene.add(outline);
         selectionOutlineRef.current = outline;
       } else {
@@ -680,10 +682,11 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           selectedFurniture.position.x = newX;
           selectedFurniture.position.z = newZ;
 
-          // Update selection outline
+          // Update selection outline (position and rotation)
           if (selectionOutlineRef.current) {
             selectionOutlineRef.current.position.x = newX;
             selectionOutlineRef.current.position.z = newZ;
+            selectionOutlineRef.current.rotation.y = selectedFurniture.rotation.y;
           }
         }
       } else {
@@ -717,10 +720,115 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
     };
 
     const onMouseUp = () => {
-      if (isDragging) {
+      if (isDragging && selectedFurniture) {
+        // Check for collisions with other furniture and snap to non-overlapping position
+        const otherFurniture = furnitureGroup.children.filter(f => f !== selectedFurniture);
+
+        const selectedBox = new THREE.Box3().setFromObject(selectedFurniture);
+        const selectedSize = selectedBox.getSize(new THREE.Vector3());
+
+        let hasCollision = false;
+
+        for (const other of otherFurniture) {
+          const otherBox = new THREE.Box3().setFromObject(other);
+          if (selectedBox.intersectsBox(otherBox)) {
+            hasCollision = true;
+            break;
+          }
+        }
+
+        if (hasCollision) {
+          // Try to find a non-overlapping position nearby
+          const originalPos = selectedFurniture.position.clone();
+          const offsets = [
+            [1, 0], [-1, 0], [0, 1], [0, -1],
+            [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5],
+            [2, 0], [-2, 0], [0, 2], [0, -2],
+            [1, 1], [-1, 1], [1, -1], [-1, -1],
+          ];
+
+          let foundSpot = false;
+          for (const [dx, dz] of offsets) {
+            selectedFurniture.position.x = originalPos.x + dx;
+            selectedFurniture.position.z = originalPos.z + dz;
+
+            // Clamp to room bounds
+            const maxX = (roomLength / 2) - (selectedSize.x / 2) - 0.1;
+            const maxZ = (roomWidth / 2) - (selectedSize.z / 2) - 0.1;
+            selectedFurniture.position.x = Math.max(-maxX, Math.min(maxX, selectedFurniture.position.x));
+            selectedFurniture.position.z = Math.max(-maxZ, Math.min(maxZ, selectedFurniture.position.z));
+
+            const testBox = new THREE.Box3().setFromObject(selectedFurniture);
+            let stillCollides = false;
+
+            for (const other of otherFurniture) {
+              const otherBox = new THREE.Box3().setFromObject(other);
+              if (testBox.intersectsBox(otherBox)) {
+                stillCollides = true;
+                break;
+              }
+            }
+
+            if (!stillCollides) {
+              foundSpot = true;
+              break;
+            }
+          }
+
+          if (!foundSpot) {
+            // Couldn't find spot, revert to original
+            selectedFurniture.position.copy(originalPos);
+          }
+
+          // Update selection outline
+          if (selectionOutlineRef.current) {
+            selectionOutlineRef.current.position.copy(selectedFurniture.position);
+          }
+        }
+
         setIsDragging(false);
         controls.enabled = true;
         container.style.cursor = 'default';
+      }
+    };
+
+    // Keyboard handler for rotation
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!selectedFurniture) return;
+
+      const rotationStep = Math.PI / 8; // 22.5 degrees
+
+      if (event.key === 'r' || event.key === 'R') {
+        // Rotate clockwise
+        selectedFurniture.rotation.y -= rotationStep;
+        if (selectionOutlineRef.current) {
+          selectionOutlineRef.current.rotation.y = selectedFurniture.rotation.y;
+        }
+        // Force re-render to update UI
+        setSelectedFurniture({ ...selectedFurniture } as any);
+      } else if (event.key === 'e' || event.key === 'E') {
+        // Rotate counter-clockwise
+        selectedFurniture.rotation.y += rotationStep;
+        if (selectionOutlineRef.current) {
+          selectionOutlineRef.current.rotation.y = selectedFurniture.rotation.y;
+        }
+        setSelectedFurniture({ ...selectedFurniture } as any);
+      }
+    };
+
+    // Scroll wheel for rotation when holding shift
+    const onWheel = (event: WheelEvent) => {
+      if (!selectedFurniture) return;
+
+      if (event.shiftKey) {
+        event.preventDefault();
+        const rotationStep = Math.PI / 16; // Smaller steps for wheel
+        const direction = event.deltaY > 0 ? -1 : 1;
+        selectedFurniture.rotation.y += rotationStep * direction;
+        if (selectionOutlineRef.current) {
+          selectionOutlineRef.current.rotation.y = selectedFurniture.rotation.y;
+        }
+        setSelectedFurniture({ ...selectedFurniture } as any);
       }
     };
 
@@ -729,6 +837,8 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
     container.addEventListener('mousemove', onMouseMove);
     container.addEventListener('mouseup', onMouseUp);
     container.addEventListener('mouseleave', onMouseUp);
+    container.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('keydown', onKeyDown);
 
     // Touch support
     container.addEventListener('touchstart', onMouseDown, { passive: false });
@@ -740,6 +850,8 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
       container.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mouseup', onMouseUp);
       container.removeEventListener('mouseleave', onMouseUp);
+      container.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKeyDown);
       container.removeEventListener('touchstart', onMouseDown);
       container.removeEventListener('touchmove', onMouseMove);
       container.removeEventListener('touchend', onMouseUp);
@@ -777,13 +889,14 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
 
     setLoadingModels(true);
 
-    // Get objects to render
+    // Get objects to render (includes rotation)
     let objectsToRender: {
       id: string;
       label: string;
       category: string;
       dimensions: { length: number; width: number; height: number };
       position: { x: number; y: number; z: number };
+      rotation: number;
       modelUrl?: string | null;
       color?: string;
     }[] = [];
@@ -792,12 +905,13 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
       console.log('Loading', generatedModels.length, 'generated models');
 
       generatedModels.forEach((model: any) => {
-        const dims = model.dimensions || { length: 2, width: 2, height: 2 };
+        const dims = model.dimensions || model.estimatedDimensions || { length: 2, width: 2, height: 2 };
         const position = model.position3D ? {
           x: model.position3D.x * unit,
           y: 0,
           z: model.position3D.z * unit,
         } : { x: 0, y: 0, z: 0 };
+        const rotation = model.position3D?.rotation || 0;
 
         objectsToRender.push({
           id: model.id,
@@ -805,6 +919,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           category: model.category,
           dimensions: dims,
           position,
+          rotation,
           modelUrl: model.modelUrl,
           color: model.detectedColor,
         });
@@ -821,6 +936,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           y: 0,
           z: obj.position3D.z * unit,
         } : { x: 0, y: 0, z: 0 };
+        const rotation = obj.position3D?.rotation || 0;
 
         objectsToRender.push({
           id: obj.id,
@@ -828,6 +944,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
           category: obj.category,
           dimensions: dims,
           position,
+          rotation,
           modelUrl: obj.modelUrl,
           color: obj.detectedColor,
         });
@@ -849,6 +966,7 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
             y: 0,
             z: (pos.z || 0) * unit,
           },
+          rotation: pos.rotation || 0,
           modelUrl: item.modelUrl,
         });
       });
@@ -895,27 +1013,40 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
       }
 
       if (!model) {
-        model = createProceduralFurniture(obj.label, obj.category, obj.dimensions, unit, obj.color);
+        model = createDetailedProceduralFurniture(obj.label, obj.category, obj.dimensions, unit, obj.color);
       }
 
-      // Position the model
+      // Position and rotate the model
       const objLength = obj.dimensions.length * unit;
       const objWidth = obj.dimensions.width * unit;
       const padding = 0.1;
 
-      const maxX = (roomLength / 2) - (objLength / 2) - padding;
-      const maxZ = (roomWidth / 2) - (objWidth / 2) - padding;
+      // Account for rotation when calculating bounds
+      const rotatedLength = Math.abs(Math.cos(obj.rotation)) * objLength + Math.abs(Math.sin(obj.rotation)) * objWidth;
+      const rotatedWidth = Math.abs(Math.sin(obj.rotation)) * objLength + Math.abs(Math.cos(obj.rotation)) * objWidth;
+
+      const maxX = (roomLength / 2) - (rotatedLength / 2) - padding;
+      const maxZ = (roomWidth / 2) - (rotatedWidth / 2) - padding;
 
       let posX = 0, posY = 0, posZ = 0;
 
       if (obj.position) {
         posX = Math.max(-maxX, Math.min(maxX, obj.position.x));
-        posY = obj.position.y;
+        // Y position is in feet from the API, convert to meters
+        posY = (obj.position.y || 0) * unit;
         posZ = Math.max(-maxZ, Math.min(maxZ, obj.position.z));
       }
 
       model.position.set(posX, posY, posZ);
-      model.userData = { id: obj.id, label: obj.label, category: obj.category, dimensions: obj.dimensions };
+      model.rotation.y = obj.rotation; // Apply rotation from AI layout
+      model.userData = {
+        id: obj.id,
+        label: obj.label,
+        category: obj.category,
+        dimensions: obj.dimensions,
+        rotation: obj.rotation,
+        originalY: posY // Store original Y for snapping
+      };
       furnitureGroup.add(model);
     }
 
@@ -957,7 +1088,10 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
         <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none">
           <div className="bg-black/70 text-white text-xs px-3 py-2 rounded-lg pointer-events-auto">
             <div className="font-medium mb-1">🎮 Edit Mode</div>
-            <div className="opacity-80">Click to select • Drag to move</div>
+            <div className="opacity-80 space-y-0.5">
+              <div>Click to select • Drag to move</div>
+              <div>R/E keys to rotate • Shift+Scroll to rotate</div>
+            </div>
           </div>
 
           {selectedFurniture && (
@@ -965,8 +1099,35 @@ export function RoomCanvas({ roomData, furniture, showBefore = false, onFurnitur
               <div className="font-medium text-gray-800">
                 Selected: {selectedFurniture.userData?.label || 'Furniture'}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Position: ({selectedFurniture.position.x.toFixed(1)}, {selectedFurniture.position.z.toFixed(1)})
+              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                <div>Position: ({selectedFurniture.position.x.toFixed(1)}, {selectedFurniture.position.z.toFixed(1)})</div>
+                <div>Rotation: {Math.round((selectedFurniture.rotation.y * 180 / Math.PI) % 360)}°</div>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    selectedFurniture.rotation.y += Math.PI / 8;
+                    if (selectionOutlineRef.current) {
+                      selectionOutlineRef.current.rotation.y = selectedFurniture.rotation.y;
+                    }
+                    setSelectedFurniture({ ...selectedFurniture } as any);
+                  }}
+                  className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                >
+                  ↺ Rotate Left
+                </button>
+                <button
+                  onClick={() => {
+                    selectedFurniture.rotation.y -= Math.PI / 8;
+                    if (selectionOutlineRef.current) {
+                      selectionOutlineRef.current.rotation.y = selectedFurniture.rotation.y;
+                    }
+                    setSelectedFurniture({ ...selectedFurniture } as any);
+                  }}
+                  className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                >
+                  ↻ Rotate Right
+                </button>
               </div>
             </div>
           )}
